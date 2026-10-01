@@ -6,7 +6,7 @@
   "scripts": {
     "prepare": "node scripts/prepare.mjs",
     "dev": "npm run prepare && wrangler pages dev dist",
-    "deploy": "npm run prepare && wrangler pages deploy dist --project-name gotab-cf --branch master",
+    "deploy": "npm run prepare && wrangler pages deploy dist --project-name gotab --branch master",
     "db:migrate": "wrangler d1 execute gotab-cf-db --file schema.sql",
     "db:migrate:local": "wrangler d1 execute gotab-cf-db --local --file schema.sql",
     "db:migrate:batch1": "wrangler d1 execute gotab-cf-db --file migrations/batch1.sql",

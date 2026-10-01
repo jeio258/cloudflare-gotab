@@ -3,10 +3,12 @@ import { toUserInfo } from '../lib/contract';
 import { getUserByUsername } from '../lib/db';
 import { defineHandler } from '../lib/handler';
 import { ApiError, json } from '../lib/http';
+import { enforceRateLimit } from '../lib/ratelimit';
 
 export const onRequestPost = defineHandler({
   body: true,
-  run: async ({ env, body }) => {
+  run: async ({ env, request, body }) => {
+    await enforceRateLimit(env, request, 'login');
     const username = String(body.username || '').trim();
     const password = String(body.password || '');
     if (!username || !password) throw new ApiError(400, '用户名和密码不能为空');

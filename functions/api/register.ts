@@ -3,11 +3,13 @@ import { hashPassword, newId } from '../lib/auth';
 import { getUserByUsername, insertUser } from '../lib/db';
 import { defineHandler } from '../lib/handler';
 import { ApiError } from '../lib/http';
+import { enforceRateLimit } from '../lib/ratelimit';
 
 export const onRequestPost = defineHandler({
   body: true,
   msg: '注册成功，请登录',
-  run: async ({ env, body }) => {
+  run: async ({ env, request, body }) => {
+    await enforceRateLimit(env, request, 'register');
     const username = String(body.username || '').trim();
     const password = String(body.password || '');
     const email = String(body.email || '').trim();

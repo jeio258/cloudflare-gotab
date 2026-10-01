@@ -1,4 +1,4 @@
-export type Env = { DB: D1Database; JWT_SECRET?: string };
+export type Env = { DB: D1Database; JWT_SECRET?: string; RATE_LIMITER?: unknown };
 
 export function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {

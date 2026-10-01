@@ -3,11 +3,13 @@ import { hashPassword, verifyPassword } from '../lib/auth';
 import { getUserByUsername, updatePassword } from '../lib/db';
 import { defineHandler } from '../lib/handler';
 import { ApiError } from '../lib/http';
+import { enforceRateLimit } from '../lib/ratelimit';
 
 export const onRequestPost = defineHandler({
   body: true,
   msg: '密码已重置，请登录',
-  run: async ({ env, body }) => {
+  run: async ({ env, request, body }) => {
+    await enforceRateLimit(env, request, 'findPassword');
     const username = String(body.username || '').trim();
     const email = String(body.email || '').trim();
     const oldPassword = String(body.oldPassword || '');
