@@ -6,12 +6,3 @@ compatibility_flags = ["nodejs_compat"]
 d1_databases = [
   { binding = "DB", database_name = "gotab-cf-db", database_id = "488ab844-50ff-4ca3-9839-30789b3e903a" }
 ]
-
-# Cloudflare 原生 Ratelimit binding：登录/注册/找回按 路由+IP 限流（period 仅支持 10/60 秒）
-[[ratelimits]]
-name = "RATE_LIMITER"
-namespace_id = "1001"
-
-[ratelimits.simple]
-limit = 10
-period = 60

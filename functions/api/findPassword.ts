@@ -9,7 +9,7 @@ export const onRequestPost = defineHandler({
   body: true,
   msg: '密码已重置，请登录',
   run: async ({ env, request, body }) => {
-    await enforceRateLimit(env, request, 'findPassword');
+    enforceRateLimit(request, 'findPassword');
     const username = String(body.username || '').trim();
     const email = String(body.email || '').trim();
     const oldPassword = String(body.oldPassword || '');

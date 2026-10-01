@@ -8,7 +8,7 @@ import { enforceRateLimit } from '../lib/ratelimit';
 export const onRequestPost = defineHandler({
   body: true,
   run: async ({ env, request, body }) => {
-    await enforceRateLimit(env, request, 'login');
+    enforceRateLimit(request, 'login');
     const username = String(body.username || '').trim();
     const password = String(body.password || '');
     if (!username || !password) throw new ApiError(400, '用户名和密码不能为空');

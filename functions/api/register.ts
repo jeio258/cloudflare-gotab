@@ -9,7 +9,7 @@ export const onRequestPost = defineHandler({
   body: true,
   msg: '注册成功，请登录',
   run: async ({ env, request, body }) => {
-    await enforceRateLimit(env, request, 'register');
+    enforceRateLimit(request, 'register');
     const username = String(body.username || '').trim();
     const password = String(body.password || '');
     const email = String(body.email || '').trim();
