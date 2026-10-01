@@ -1,2 +1,1 @@
 JWT_SECRET=dev-only-secret-change-me
-REGISTER_CODE=123456

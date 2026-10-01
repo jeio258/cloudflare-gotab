@@ -1,10 +1,70 @@
 // 端到端 API + UI 测试（headless）。需要本地 wrangler pages dev 已起在 baseUrl。
 import { chromium, request as playwrightRequest } from 'playwright';
+import { spawn } from 'node:child_process';
 
 const base = process.env.GOTAB_BASE_URL || 'http://127.0.0.1:8799';
+// 复用本机已装的 Chrome（WSL 下指向 Windows 侧可执行文件）；Windows Chrome 不支持 stdio 调试管道，改用 CDP 端口连接
+const CHROME = process.env.GOTAB_CHROME_PATH || '/mnt/d/Chrome/App/chrome.exe';
+// browser.close() 对 CDP 连接仅断开不杀进程：残留标签页里的 SPA 会持续回写 localStorage，必须先关页
+async function closeStalePages(browser) {
+  const ctx = browser.contexts()[0];
+  if (ctx) for (const p of ctx.pages()) await p.close().catch(() => {});
+}
+async function launchBrowser() {
+  // Windows 防火墙仅放行了固定 CDP 端口（GOTAB_CDP_PORT，默认 9333）
+  const port = Number(process.env.GOTAB_CDP_PORT) || 9333;
+  // 若已有实例占用该端口则直接复用
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/json/version`);
+    const j = await r.json();
+    const browser = await chromium.connectOverCDP(j.webSocketDebuggerUrl);
+    await closeStalePages(browser);
+    return {
+      browser,
+      newPage: async (opts) => (browser.contexts()[0] || (await browser.newContext())).newPage(opts),
+      close: async () => {
+        await browser.close().catch(() => {});
+      },
+    };
+  } catch {
+    /* 未占用，正常启动 */
+  }
+  const proc = spawn(
+    CHROME,
+    ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=/tmp/cdp-probe`, '--no-first-run', 'about:blank'],
+    { stdio: 'ignore' }
+  );
+  const ws = await new Promise((resolve, reject) => {
+    let tries = 0;
+    const t = setInterval(async () => {
+      try {
+        const r = await fetch(`http://127.0.0.1:${port}/json/version`);
+        const j = await r.json();
+        clearInterval(t);
+        resolve(j.webSocketDebuggerUrl);
+      } catch {
+        if (++tries > 25) {
+          clearInterval(t);
+          proc.kill();
+          reject(new Error('Chrome CDP 启动超时'));
+        }
+      }
+    }, 300);
+  });
+  const browser = await chromium.connectOverCDP(ws);
+  await closeStalePages(browser);
+  return {
+    browser,
+    newPage: async (opts) => (browser.contexts()[0] || (await browser.newContext())).newPage(opts),
+    close: async () => {
+      await closeStalePages(browser);
+      await browser.close().catch(() => {});
+      proc?.kill();
+    },
+  };
+}
 const USER = process.env.GOTAB_USER || 'test@gotab.local';
 const PASS = process.env.GOTAB_PASS || 'test123456';
-const CODE = process.env.GOTAB_REGISTER_CODE || '123456';
 const failures = [];
 const log = (...a) => console.log(...a);
 const eq = (name, got, want) => {
@@ -41,29 +101,35 @@ const cleanupUsers = [];
   eq('wrong pwd code', body?.code, 400);
 }
 
-// 2.5 注册(B方案固定邀请码)/找回/资料编辑
+// 2.5 注册(无验证码)/找回/资料编辑
 {
   const uname = `u${Date.now() % 1000000}`;
   cleanupUsers.push(uname);
   const email = `${uname}@test.local`;
-  // 错误邀请码注册
+  // 带任意验证码值也应成功（证明后端不再校验）
   const r0 = await api.post(`${base}/api/register`, {
-    data: { username: uname, password: 'pass123', email, emailCode: '000' },
+    data: { username: uname, password: 'pass123', email, emailCode: '000000' },
   });
   const { body: b0 } = await okJson(r0);
-  eq('register 错码拒绝', b0?.code, 400);
-  // 正确注册
+  eq('register 成功(任意验证码值)', b0?.code, 200);
+  // 无 emailCode 字段同样成功
+  const uname2 = `v${Date.now() % 1000000}`;
+  cleanupUsers.push(uname2);
   const r1 = await api.post(`${base}/api/register`, {
-    data: { username: uname, password: 'pass123', email, emailCode: CODE },
+    data: { username: uname2, password: 'pass123', email: `${uname2}@test.local` },
   });
   const { body: b1 } = await okJson(r1);
-  eq('register 成功', b1?.code, 200);
+  eq('register 成功(无验证码字段)', b1?.code, 200);
   // 重复用户名
   const r2 = await api.post(`${base}/api/register`, {
-    data: { username: uname, password: 'pass123', email: `x${email}`, emailCode: CODE },
+    data: { username: uname, password: 'pass123', email: `x${email}` },
   });
   const { body: b2 } = await okJson(r2);
   eq('register 重复用户名', b2?.code, 400);
+  // 已下线的验证码前置接口走兜底 404
+  const rc = await api.post(`${base}/api/emailCode`, { data: { email } });
+  const { body: bc } = await okJson(rc);
+  eq('emailCode 已下线(兑底404)', bc?.code, 404);
   // 新用户登录(userType=0)
   const r3 = await api.post(`${base}/api/login`, { data: { username: uname, password: 'pass123' } });
   const { body: b3 } = await okJson(r3);
@@ -79,19 +145,14 @@ const cleanupUsers = [];
   eq('editUserInfo code', b4?.code, 200);
   eq('editUserInfo nickname', b4?.data?.nickname, '昵称');
   eq('editUserInfo sex', b4?.data?.sex, 1);
-  // emailCode/找回
-  const r5 = await api.post(`${base}/api/findPasswordEmailCode`, {
-    data: { username: uname, email: `bad@test.local` },
-  });
-  const { body: b5 } = await okJson(r5);
-  eq('findPwdEmailCode 不匹配', b5?.code, 400);
+  // findPassword 找回
   const r6bad = await api.post(`${base}/api/findPassword`, {
-    data: { username: uname, email, emailCode: CODE, newPassword: 'newpass1', confirmPassword: 'newpass1' },
+    data: { username: uname, email, newPassword: 'newpass1', confirmPassword: 'newpass1' },
   });
   const { body: b6bad } = await okJson(r6bad);
   eq('findPassword 缺原密码被拒', b6bad?.code, 400);
   const r6 = await api.post(`${base}/api/findPassword`, {
-    data: { username: uname, email, emailCode: CODE, oldPassword: 'pass123', newPassword: 'newpass1', confirmPassword: 'newpass1' },
+    data: { username: uname, email, oldPassword: 'pass123', newPassword: 'newpass1', confirmPassword: 'newpass1' },
   });
   const { body: b6 } = await okJson(r6);
   eq('findPassword 重置成功', b6?.code, 200);
@@ -237,24 +298,38 @@ const authHdr = { authorization: token };
 
 // 7. UI 登录流程
 {
-  const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  const { browser, newPage, close } = await launchBrowser();
+  const page = await newPage({ viewport: { width: 1280, height: 800 } });
   const consoleErrs = [];
+  // 共享 CDP profile 下 IndexedDB 初始化失败属环境噪音（Windows Chrome+WSL 路径），前端已降级处理
+  const isEnvNoise = (t) => t.includes('IndexedDB 初始化失败');
   page.on('pageerror', (e) => consoleErrs.push(String(e)));
-  page.on('console', (m) => { if (m.type() === 'error') consoleErrs.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !isEnvNoise(m.text())) consoleErrs.push(m.text()); });
 
   await page.goto(base, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  // SPA 会在 unload 时把内存态回写存储，同页清空会被覆盖；先离开页面再经 CDP 清存储
+  await page.goto('about:blank');
+  await page.waitForTimeout(500);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Storage.clearDataForOrigin', { origin: new URL(base).origin, storageTypes: 'all' });
+  await page.goto(base, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.waitForTimeout(5000);
-  // 关闭可能出现的公告通知弹层，避免遮挡头像
-  const notifClose = page.locator('.ant-notification-notice-close, .ant-notification-close-icon').first();
-  if (await notifClose.count()) {
-    await notifClose.click({ force: true }).catch(() => {});
-    await page.waitForTimeout(500);
+  // 公告弹层可能异步弹出，循环关闭并等其消失，避免遮挡头像
+  for (let i = 0; i < 5; i++) {
+    const nc = page.locator('.ant-notification-notice-close').first();
+    if (!(await nc.count())) break;
+    await nc.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(800);
   }
-  await page.locator('.ant-avatar').first().click();
-  await page.waitForTimeout(1200);
-  await page.getByText('登录/注册').first().click();
-  await page.waitForTimeout(1500);
+  await page.locator('.ant-notification-notice').first().waitFor({ state: 'detached', timeout: 10000 }).catch(() => {});
+  await page.locator('.ant-avatar').first().click({ force: true });
+  // 等待面板内登录表单出现（游客面板通常直接展开登录视图）
+  await page.waitForSelector('#login-form_username', { state: 'visible', timeout: 15000 }).catch(() => {});
+  if ((await page.locator('#login-form_username').count()) === 0) {
+    const entry = page.getByText('登录/注册').first();
+    if (await entry.count()) await entry.click();
+    await page.waitForSelector('#login-form_username', { state: 'visible', timeout: 15000 });
+  }
   await page.locator('#login-form_username').fill(USER);
   await page.locator('#login-form_password').fill(PASS);
   const [loginResp] = await Promise.all([
@@ -271,8 +346,95 @@ const authHdr = { authorization: token };
   const tok = JSON.parse(stored?.token || '""');
   eq('UI token persisted', typeof tok === 'string' && tok.length > 20, true);
   eq('UI no console errors', consoleErrs.length, 0);
-  await page.screenshot({ path: '/tmp/gotab-after-login.png' });
-  await browser.close();
+  if (consoleErrs.length) log('UI console errors: ' + JSON.stringify(consoleErrs.slice(0, 5)));
+  // Windows Chrome 经 CDP 截图可能因字体加载悬住，限时容忍
+  await page.screenshot({ path: '/tmp/gotab-after-login.png', timeout: 8000 }).catch(() => {});
+  await close();
+}
+
+// 7.1 UI 注册（验证码字段隐藏+自动填充，全链路）
+{
+  const { browser, newPage, close } = await launchBrowser();
+  const page = await newPage({ viewport: { width: 1280, height: 800 } });
+  const consoleErrs = [];
+  const isEnvNoise = (t) => t.includes('IndexedDB 初始化失败');
+  page.on('pageerror', (e) => consoleErrs.push(String(e)));
+  page.on('console', (m) => { if (m.type() === 'error' && !isEnvNoise(m.text())) consoleErrs.push(m.text()); });
+
+  await page.goto(base, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  // 注册入口仅游客态可见；同上，先离开页面再经 CDP 清存储
+  await page.goto('about:blank');
+  await page.waitForTimeout(500);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Storage.clearDataForOrigin', { origin: new URL(base).origin, storageTypes: 'all' });
+  await page.goto(base, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForTimeout(5000);
+  // 公告弹层循环关闭并等其消失（同上）
+  for (let i = 0; i < 5; i++) {
+    const nc = page.locator('.ant-notification-notice-close').first();
+    if (!(await nc.count())) break;
+    await nc.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(800);
+  }
+  await page.locator('.ant-notification-notice').first().waitFor({ state: 'detached', timeout: 10000 }).catch(() => {});
+  await page.locator('.ant-avatar').first().click({ force: true });
+  await page.waitForSelector('#login-form_username', { state: 'visible', timeout: 15000 }).catch(() => {});
+  if ((await page.locator('#login-form_username').count()) === 0) {
+    const entry = page.getByText('登录/注册').first();
+    if (await entry.count()) await entry.click();
+    await page.waitForSelector('#login-form_username', { state: 'visible', timeout: 15000 }).catch(() => {});
+  }
+  await page.getByText('没有账号？立即注册').first().click({ timeout: 15000 });
+  await page.waitForSelector('#register-form_username', { state: 'visible', timeout: 15000 });
+  await page.waitForTimeout(1500);
+
+  const uname = `ui${Date.now() % 1000000}`;
+  cleanupUsers.push(uname);
+  await page.locator('#register-form_username').fill(uname);
+  await page.locator('#register-form_password').fill('pass123');
+  await page.locator('#register-form_email').fill(`${uname}@test.local`);
+
+  // 验证码字段被 overrides 隐藏并自动填充，无需交互
+  const codeHidden = await page
+    .locator('#register-form_emailCode')
+    .evaluate((el) => {
+      const item = el.closest('.ant-form-item');
+      return item ? getComputedStyle(item).display === 'none' : false;
+    })
+    .catch(() => false);
+  eq('UI 注册验证码字段已隐藏', codeHidden, true);
+  const codeVal = await page.inputValue('#register-form_emailCode').catch(() => '');
+  eq('UI 注册验证码已自动填充', codeVal, '000000');
+  const sendBtn = await page.getByRole('button', { name: '获取验证码' }).count();
+  eq('UI 获取验证码按钮已隐藏', sendBtn, 0);
+
+  const [regResp] = await Promise.all([
+    page.waitForResponse((r) => r.url().endsWith('/api/register') && r.request().method() === 'POST', { timeout: 10000 }),
+    page.getByRole('button', { name: '注 册' }).click(),
+  ]);
+  const regBody = await regResp.json().catch(() => null);
+  eq('UI 注册 code', regBody?.code, 200);
+  await page.waitForTimeout(1500);
+  // 注册成功后切回登录视图，直接登录新号验证全链路
+  await page.locator('#login-form_username').fill(uname);
+  await page.locator('#login-form_password').fill('pass123');
+  const [loginResp] = await Promise.all([
+    page.waitForResponse((r) => r.url().endsWith('/api/login') && r.request().method() === 'POST', { timeout: 10000 }),
+    page.getByRole('button', { name: '登 录' }).click(),
+  ]);
+  eq('UI 注册后登录 http', loginResp.status(), 200);
+  await page.waitForTimeout(1500);
+  const uiStored = await page.evaluate(() => {
+    const raw = localStorage.getItem('persist:user');
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return raw; }
+  });
+  const uiTok = uiStored ? JSON.parse(uiStored?.token || '""') : '';
+  eq('UI 注册后登录 token', typeof uiTok === 'string' && uiTok.length > 20, true);
+  eq('UI 注册无 console 报错', consoleErrs.length, 0);
+  if (consoleErrs.length) log('UI register console errors: ' + JSON.stringify(consoleErrs.slice(0, 5)));
+  await page.screenshot({ path: '/tmp/gotab-after-register.png', timeout: 8000 }).catch(() => {});
+  await close();
 }
 
 // 7.5 公告与默认主页（token=admin）
@@ -281,7 +443,7 @@ const authHdr = { authorization: token };
   const uname = `n${Date.now() % 1000000}`;
   cleanupUsers.push(uname);
   await api.post(`${base}/api/register`, {
-    data: { username: uname, password: 'pass123', email: `${uname}@test.local`, emailCode: CODE },
+    data: { username: uname, password: 'pass123', email: `${uname}@test.local` },
   });
   const lr = await api.post(`${base}/api/login`, { data: { username: uname, password: 'pass123' } });
   const lj = (await okJson(lr)).body;

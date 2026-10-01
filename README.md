@@ -14,7 +14,7 @@
 | 后端 | 与前端同一 Cloudflare Pages 项目内的 Pages Functions（同域同源，无 CORS） |
 | 存储 | Cloudflare D1（users / user_data / notices / default_data / default_data_history） |
 | 鉴权 | 登录签发 JWT(HMAC-SHA256)，请求头 `Authorization: <token>`；口令 scrypt 哈希 |
-| 注册 | 免邮件 B 方案：固定邀请码（Pages secret `REGISTER_CODE`）即注册/找回的"验证码"（当前值见部署配置，勿写入公开文档） |
+| 注册 | 无验证码开放注册，仅用户名唯一性约束；滥用防护依赖 Cloudflare 侧 Rate Limiting/Turnstile |
 | 角色 | 支持多账号（管理员 userType=1 / 普通 0），后台仅管理员可用 |
 | 仓库 | `/home/lyxy/pi/gotab-cf` |
 
@@ -29,7 +29,7 @@ gotab-cf（一个 Cloudflare Pages 项目，自动域名 *.pages.dev）
 ├── 静态资源   = web 构建产物（index.html 占位符已替换 + overrides 注入 + 搜索URL同源替换）
 ├── functions/ = 后端 API（见 §3）
 ├── D1         = gotab-cf-db
-└── Secrets    = JWT_SECRET / REGISTER_CODE（Pages secret）
+└── Secrets    = JWT_SECRET（Pages secret）
 ```
 
 请求顺序（已验证）：Functions 命中 `/api/*` 已实现路由 → 静态资源 → `_redirects` SPA 回退（`/* /index.html 200`）。
@@ -47,10 +47,8 @@ gotab-cf（一个 Cloudflare Pages 项目，自动域名 *.pages.dev）
 | `GET /api/user/logout` | 退出 |
 | `POST /api/user/changePassword` | 修改密码 |
 | `POST /api/user/editUserInfo` | 资料编辑：昵称/性别/手机/生日/用户名 → 完整 userInfo |
-| `POST /api/emailCode` | 不发信，提示"请输入邀请码完成验证" |
-| `POST /api/register` | 注册（邀请码校验、用户名唯一、普通用户） |
-| `POST /api/findPasswordEmailCode` | 找回前置校验（用户名+邮箱匹配） |
-| `POST /api/findPassword` | 重置密码（需邀请码） |
+| `POST /api/register` | 注册（用户名唯一、普通用户） |
+| `POST /api/findPassword` | 重置密码（需原密码） |
 | `GET /api/user/isAdmin` | 管理员（userType=1 且未禁用）返回 200+true，其余 403/401 |
 
 ### 云同步（每账号整份快照）
@@ -114,7 +112,7 @@ gotab-cf（一个 Cloudflare Pages 项目，自动域名 *.pages.dev）
 ## 5. 支持功能总表
 
 ### ✅ 可用
-- 登录 / 注册（邀请码）/ 找回密码（邀请码）/ 退出 / 修改密码 / 资料编辑（昵称/性别/手机/生日）
+- 登录 / 注册 / 找回密码 / 退出 / 修改密码 / 资料编辑（昵称/性别/手机/生日）
 - 多账号；云同步自动推送/拉取/409 冲突弹窗/手动推拉；游客本地数据
 - 添加网址卡片、"获取信息"（faviconsnap 默认图标）、外部图标/壁纸 URL
 - 公告（首页弹层）+ 管理员发布/二次确认
@@ -136,7 +134,6 @@ gotab-cf（一个 Cloudflare Pages 项目，自动域名 *.pages.dev）
 ### ⚠️ 边界
 - 热搜：weibo/百度可用；bilibili/知乎在 CF 侧风控/需登录 → 空列表
 - 天气：免费源无 AQI/生活 tips（字段留空）
-- 注册/找回的"验证码"即邀请码（`REGISTER_CODE`，泄露即可注册，可随时改）
 - 分享页公开只读：任何激活账号的主页都可通过其用户名/share_id 公开访问
 - robots.txt / sitemap.xml 仍指向官方 web.gotab.cn
 
@@ -150,8 +147,6 @@ gotab-cf（一个 Cloudflare Pages 项目，自动域名 *.pages.dev）
   node scripts/create-account.mjs --remote --username <账号> --password <密码>
   ```
   新注册用户为普通用户（userType=0）；要设管理员请在 `/console` 用户管理操作
-- 注册邀请码：Pages secret `REGISTER_CODE`（由部署者自行设置，勿写入公开文档）
-- 修改邀请码：`printf '新码' | npx wrangler pages secret put REGISTER_CODE --project-name gotab-cf`
 
 ---
 
@@ -178,7 +173,7 @@ node tests/e2e.mjs
 # 远程
 GOTAB_BASE_URL=https://gotab-cf.pages.dev GOTAB_USER=<账号> GOTAB_PASS=<密码> node tests/e2e.mjs
 ```
-覆盖：静态/兜底、登录(错/对/禁用)、注册(邀请码)、找回、资料编辑、同步与 409、isAdmin、公告(含二次确认)、默认主页、console 用户管理、挂件 5 接口、搜索联想、分享页、真实 UI 登录（无 console 报错）。测试自动清理其注册的测试用户。
+覆盖：静态/兜底、登录(错/对/禁用)、注册(无验证码)、找回、资料编辑、同步与 409、isAdmin、公告(含二次确认)、默认主页、console 用户管理、挂件 5 接口、搜索联想、分享页、真实 UI 登录（无 console 报错）。测试自动清理其注册的测试用户。
 
 ### 关键目录
 ```

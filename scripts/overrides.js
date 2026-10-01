@@ -29,6 +29,36 @@
     });
   }
 
+  // ===== 无验证码注册/找回：后端已不再校验验证码，自动填充并隐藏相关 UI =====
+  const CODE_VALUE = '000000';
+  const CODE_IDS = ['register-form_emailCode', 'findPassword-form_emailCode'];
+  const neutralized = new WeakSet();
+
+  function neutralizeEmailCode() {
+    for (const id of CODE_IDS) {
+      const input = document.getElementById(id);
+      if (!input) continue;
+      // 隐藏验证码表单项
+      const item = input.closest('.ant-form-item');
+      if (item) item.style.display = 'none';
+      // 经 React 原生 setter 注入值，绕过 required 校验（仅首次）
+      if (!neutralized.has(input)) {
+        neutralized.add(input);
+        try {
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+          setter.call(input, CODE_VALUE);
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        } catch {
+          /* noop */
+        }
+      }
+    }
+    // 隐藏“获取验证码”按钮（后端接口已下线）
+    document.querySelectorAll('button').forEach((b) => {
+      if (txt(b) === '获取验证码') hide(b);
+    });
+  }
+
   // ===== 找回密码表单适配：后端要求原密码，前端表单未含该字段 =====
   const OLD_PW_ID = 'gotab-oldPassword';
   const FIND_PW_PATH = '/api/findPassword';
@@ -196,6 +226,9 @@
 
     // 找回密码表单：注入原密码输入
     injectOldPwField();
+
+    // 无验证码注册/找回：隐藏验证码 UI 并自动填充
+    neutralizeEmailCode();
 
     // 品牌替换兜底
     fixAttribution();

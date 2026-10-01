@@ -1,4 +1,4 @@
-import { EMAIL_RE, validPassword, codeMatches, inviteCode } from '../lib/account';
+import { EMAIL_RE, validPassword } from '../lib/account';
 import { hashPassword, verifyPassword } from '../lib/auth';
 import { getUserByUsername, updatePassword } from '../lib/db';
 import { defineHandler } from '../lib/handler';
@@ -8,7 +8,6 @@ export const onRequestPost = defineHandler({
   body: true,
   msg: '密码已重置，请登录',
   run: async ({ env, body }) => {
-    if (!inviteCode(env)) throw new ApiError(400, '找回密码功能未开启');
     const username = String(body.username || '').trim();
     const email = String(body.email || '').trim();
     const oldPassword = String(body.oldPassword || '');
@@ -19,7 +18,6 @@ export const onRequestPost = defineHandler({
     if (!oldPassword) throw new ApiError(400, '请输入原密码');
     if (!validPassword(newPassword)) throw new ApiError(400, '新密码长度需在 6-32 位之间');
     if (newPassword !== confirmPassword) throw new ApiError(400, '两次输入的新密码不一致');
-    if (!codeMatches(env, body.emailCode)) throw new ApiError(400, '邀请码不正确');
 
     const user = await getUserByUsername(env, username);
     if (!user || user.email !== email) throw new ApiError(400, '用户名与邮箱不匹配');
