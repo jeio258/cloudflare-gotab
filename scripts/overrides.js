@@ -16,25 +16,23 @@
   const REPO_URL = 'https://github.com/jeio258/cloudflare-tab';
   const GH_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" style="vertical-align:middle" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>';
 
-  function fixAttribution() {
-    document.querySelectorAll('a').forEach((a) => {
-      const t = (a.textContent || '').trim();
-      const href = a.getAttribute('href') || '';
-      if (t === '@doxwant' || href.indexOf('github.com/dengxiwang') >= 0) {
-        a.setAttribute('href', REPO_URL);
-        a.setAttribute('target', '_blank');
-        a.setAttribute('rel', 'noopener');
-        if (t === '@doxwant') a.innerHTML = GH_ICON;
-      }
-    });
-  }
+  const fixAttribution = (a) => {
+    const t = (a.textContent || '').trim();
+    const href = a.getAttribute('href') || '';
+    if (t === '@doxwant' || href.indexOf('github.com/dengxiwang') >= 0) {
+      a.setAttribute('href', REPO_URL);
+      a.setAttribute('target', '_blank');
+      a.setAttribute('rel', 'noopener');
+      if (t === '@doxwant') a.innerHTML = GH_ICON;
+    }
+  };
 
   // ===== 无验证码注册/找回：后端已不再校验验证码，自动填充并隐藏相关 UI =====
   const CODE_VALUE = '000000';
   const CODE_IDS = ['register-form_emailCode', 'findPassword-form_emailCode'];
   const neutralized = new WeakSet();
 
-  function neutralizeEmailCode() {
+  function neutralizeEmailCode(buttons) {
     for (const id of CODE_IDS) {
       const input = document.getElementById(id);
       if (!input) continue;
@@ -53,10 +51,10 @@
         }
       }
     }
-    // 隐藏“获取验证码”按钮（后端接口已下线）
-    document.querySelectorAll('button').forEach((b) => {
+    // 隐藏“获取验证码”按钮（后端接口已下线；复用扫描收集，不再整树遍历）
+    for (const b of buttons) {
       if (txt(b) === '获取验证码') hide(b);
-    });
+    }
   }
 
   // ===== 找回密码表单适配：后端要求原密码，前端表单未含该字段 =====
@@ -179,62 +177,72 @@
     'anticon-upload': '上传',
   };
 
-  function fixIconButtonLabels() {
-    document
-      .querySelectorAll('button.ant-btn, button[class*="ant-btn"], button[class*="icon"]')
-      .forEach((btn) => {
-        if (btn.getAttribute('aria-label') || btn.getAttribute('title')) return;
-        if (txt(btn)) return;
-        const icon = btn.querySelector('[class*="anticon-"]');
-        let label = '';
-        if (icon) {
-          const m = String(icon.className).match(/anticon-[a-z0-9-]+/);
-          if (m) label = ICON_LABEL[m[0]] || '';
-        }
-        if (!label) {
-          const img = btn.querySelector('img[alt]');
-          const alt = img ? (img.getAttribute('alt') || '').trim() : '';
-          label = alt || '快捷操作';
-        }
-        btn.setAttribute('aria-label', label);
-      });
-  }
+  const fixIconLabel = (btn) => {
+    if (btn.getAttribute('aria-label') || btn.getAttribute('title')) return;
+    if (txt(btn)) return;
+    const icon = btn.querySelector('[class*="anticon-"]');
+    let label = '';
+    if (icon) {
+      const m = String(icon.className).match(/anticon-[a-z0-9-]+/);
+      if (m) label = ICON_LABEL[m[0]] || '';
+    }
+    if (!label) {
+      const img = btn.querySelector('img[alt]');
+      const alt = img ? (img.getAttribute('alt') || '').trim() : '';
+      label = alt || '快捷操作';
+    }
+    btn.setAttribute('aria-label', label);
+  };
+
+  // 一次全文档遍历覆盖所有隐藏/标注动作（原 5 次 querySelectorAll 合并为 1 次）
+  const SCAN_SEL =
+    '.ant-menu-item, .ant-menu-submenu-title, li[role="menuitem"], button, .ant-menu-item-group, a';
 
   function scanImpl() {
+    const items = [];
+    const buttons = [];
+    const groups = [];
+    const anchors = [];
+    for (const el of document.querySelectorAll(SCAN_SEL)) {
+      if (el.tagName === 'BUTTON') buttons.push(el);
+      else if (el.tagName === 'A') anchors.push(el);
+      else if (el.classList.contains('ant-menu-item-group')) groups.push(el);
+      else items.push(el);
+    }
+
     // 抽屉/菜单项
-    document
-      .querySelectorAll('.ant-menu-item, .ant-menu-submenu-title, li[role="menuitem"]')
-      .forEach((el) => {
-        const t = txt(el);
-        if (t && MENU_HIDE.some((h) => t.includes(h))) hide(el);
-      });
+    for (const el of items) {
+      const t = txt(el);
+      if (t && MENU_HIDE.some((h) => t.includes(h))) hide(el);
+    }
 
     // 按钮级隐藏（按文案精确匹配，避免误伤）
-    document.querySelectorAll('button').forEach((b) => {
+    for (const b of buttons) {
       const t = txt(b);
-      if (!t) return;
+      if (!t) continue;
       if (BUTTON_HIDE.some((h) => t === h)) hide(b);
       // 纯"上传"按钮：后端未实现上传
       if (t === '上传') hide(b);
-    });
+    }
 
     // 空分组头清理
-    document.querySelectorAll('.ant-menu-item-group').forEach((g) => {
-      const items = g.querySelectorAll('.ant-menu-item, .ant-menu-submenu-title, li[role="menuitem"]');
-      if (items.length && [...items].every((i) => !visible(i))) hide(g);
-    });
+    for (const g of groups) {
+      const own = items.filter((i) => g.contains(i));
+      if (own.length && own.every((i) => !visible(i))) hide(g);
+    }
+
+    // 品牌替换兜底
+    for (const a of anchors) fixAttribution(a);
+    // 无障碍：图标按钮补可访问名（保持原作用域：仅 antd/icon 类按钮）
+    for (const b of buttons) {
+      if (b.matches('button.ant-btn, button[class*="ant-btn"], button[class*="icon"]')) fixIconLabel(b);
+    }
 
     // 找回密码表单：注入原密码输入
     injectOldPwField();
 
     // 无验证码注册/找回：隐藏验证码 UI 并自动填充
-    neutralizeEmailCode();
-
-    // 品牌替换兜底
-    fixAttribution();
-
-    // 无障碍：图标按钮补可访问名
-    fixIconButtonLabels();
+    neutralizeEmailCode(buttons);
   }
 
   let pending = false;
@@ -256,6 +264,18 @@
     }
   }
 
+  // 突变相关性过滤：仅当新增节点含本补丁关心的元素才重扫
+  // （时钟/挂件等无关重渲染不再触发整树遍历；form/input 覆盖验证码与找回表单的再挂载）
+  const RELEVANT_SEL = SCAN_SEL + ', form, input';
+  const relevantMutation = (records) =>
+    records.some((r) =>
+      [...r.addedNodes].some(
+        (n) => n.nodeType === 1 && (n.matches(RELEVANT_SEL) || n.querySelector(RELEVANT_SEL))
+      )
+    );
+
   scan();
-  new MutationObserver(requestScan).observe(document.documentElement, { childList: true, subtree: true });
+  new MutationObserver((records) => {
+    if (relevantMutation(records)) requestScan();
+  }).observe(document.documentElement, { childList: true, subtree: true });
 })();
