@@ -532,6 +532,8 @@ const authHdr = { authorization: token };
       }
       eq('main 已改用 /api/search-suggest', entry.includes('/api/search-suggest?wd='), true);
       eq('main 不含百度直连', !entry.includes('baidu.com/sugrec'), true);
+      // 冻结护栏：上游同源代理化后不得再出现 web.gotab.cn 直连（回归：prepare 替换丢失）
+      eq('main 不含 web.gotab.cn 直连', !entry.includes('web.gotab.cn'), true);
     }
   }
   // 分享页：getShareData(管理员 username 或 share_id) 返回其云数据
