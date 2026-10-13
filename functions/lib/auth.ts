@@ -40,8 +40,13 @@ const b64urlDecode = (s: string): Uint8Array => {
   return Uint8Array.from(bin, (c) => c.charCodeAt(0));
 };
 
+let secretWarned = false;
 const secretOf = (env: Env) => {
   if (!env.JWT_SECRET) throw new Error('JWT_SECRET 未配置');
+  if (!secretWarned && env.JWT_SECRET.length < 32) {
+    secretWarned = true;
+    console.warn('[auth] JWT_SECRET 不足 32 字符，熵被 padEnd 稀释，建议用 ≥32 位随机串');
+  }
   return env.JWT_SECRET.padEnd(32, 'x');
 };
 
@@ -68,6 +73,8 @@ export async function verifyToken(env: Env, token: string): Promise<string | nul
     const key = await hmacKey(env);
     const valid = await crypto.subtle.verify('HMAC', key, b64urlDecode(sig), enc.encode(`${h}.${p}`));
     if (!valid) return null;
+    const header = JSON.parse(dec.decode(b64urlDecode(h))) as { alg?: string };
+    if (header.alg !== 'HS256') return null;
     const payload = JSON.parse(dec.decode(b64urlDecode(p))) as { uid?: string; exp?: number };
     if (!payload.uid) return null;
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
