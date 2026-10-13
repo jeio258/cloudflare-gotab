@@ -12,9 +12,9 @@ export const onRequestPost = defineHandler({
     if (!title) throw new ApiError(400, '标题不能为空');
 
     await env.DB.prepare(
-      'insert into notices (id, title, content, status, time_code, created_by) values (?, ?, ?, 0, ?, ?)'
+      'insert into notices (id, title, content, status, time_code, created_by, created_at) values (?, ?, ?, 0, ?, ?, ?)'
     )
-      .bind(newId(), title, content, String(Date.now()), admin!.username)
+      .bind(newId(), title, content, String(Date.now()), admin!.username, new Date().toISOString())
       .run();
     return null;
   },

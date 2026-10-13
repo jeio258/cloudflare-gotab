@@ -33,8 +33,8 @@ export const getUserById = (env: Env, id: string) =>
 
 export const insertUser = (env: Env, u: Omit<UserRow, 'created_at'>) =>
   env.DB.prepare(
-    `insert into users (id, username, password, nickname, email, phone, avatar, sex, birthday, user_type, status, share_id, share_enabled)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `insert into users (id, username, password, nickname, email, phone, avatar, sex, birthday, user_type, status, share_id, share_enabled, created_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       u.id,
@@ -49,7 +49,9 @@ export const insertUser = (env: Env, u: Omit<UserRow, 'created_at'>) =>
       u.user_type,
       u.status,
       u.share_id,
-      u.share_enabled
+      u.share_enabled,
+      // 显式绑定 ISO created_at：schema 默认 datetime('now') 为空格分隔格式，与 setDefaultData 等处的 ISO 口径双轨
+      new Date().toISOString()
     )
     .run();
 
