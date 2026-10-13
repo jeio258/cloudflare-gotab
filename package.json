@@ -17,7 +17,8 @@
     "db:migrate:batch3:local": "wrangler d1 execute gotab-cf-db --local --file migrations/batch3.sql",
     "account:create": "node scripts/create-account.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/e2e.mjs"
+    "test": "node tests/e2e.mjs",
+    "perf": "node tests/perf/run-perf.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260831.1",

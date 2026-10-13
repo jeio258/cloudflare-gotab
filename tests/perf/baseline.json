@@ -1,0 +1,30 @@
+{
+  "url": "https://tab.kfkf.asia/",
+  "at": "2026-10-13T22:50:00.000Z",
+  "note": "基线来自 2026-10-13 三轮生产实测（Lighthouse 13.4.1，LAX 边缘；移动冷为多次中位）。A-3 部署后渲染阻塞 5→1，得分在噪声内持平（30→31/33/38），故移动档取中位 33。",
+  "tiers": {
+    "desktop": {
+      "score": 52,
+      "fcp": 3950,
+      "lcp": 5450,
+      "tbt": 245,
+      "si": 8100,
+      "ttfb": 620,
+      "transferKB": 1810
+    },
+    "mobile": {
+      "score": 33,
+      "fcp": 7650,
+      "lcp": 12350,
+      "tbt": 1100,
+      "si": 19500,
+      "ttfb": 300,
+      "transferKB": 1811
+    },
+    "warm": {
+      "lcp": 624,
+      "ttfb": 250,
+      "transferKB": 8
+    }
+  }
+}
