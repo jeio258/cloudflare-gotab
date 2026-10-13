@@ -113,6 +113,9 @@ writeFileSync(
     '  Strict-Transport-Security: max-age=31536000',
     '  Referrer-Policy: strict-origin-when-cross-origin',
     '  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()',
+    // CSP 实用级：拦注入型 XSS；放宽项均有依据（无 eval；样式需 unsafe-inline（React 内联+补丁<style>）；
+    // 自定义壁纸/图标走 https: 任意域；iframe 挂件需 frame-src https:；图片 blob 预览；控制台推荐接口 web.gotab.cn）
+    '  Content-Security-Policy: default-src \'self\'; script-src \'self\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data: blob: https:; connect-src \'self\' https://web.gotab.cn; font-src \'self\' data:; media-src \'self\' https: blob:; frame-src \'self\' https:; worker-src \'self\' blob:; object-src \'none\'; base-uri \'self\'; frame-ancestors \'self\'; form-action \'self\'',
     '',
   ].join('\n')
 );
