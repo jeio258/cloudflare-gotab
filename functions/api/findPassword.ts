@@ -9,7 +9,6 @@ export const onRequestPost = defineHandler({
   body: true,
   msg: '密码已重置，请登录',
   run: async ({ env, request, body }) => {
-    enforceRateLimit(request, 'findPassword');
     const username = String(body.username || '').trim();
     const email = String(body.email || '').trim();
     const oldPassword = String(body.oldPassword || '');
@@ -20,7 +19,8 @@ export const onRequestPost = defineHandler({
     if (!oldPassword) throw new ApiError(400, '请输入原密码');
     if (!validPassword(newPassword)) throw new ApiError(400, '新密码长度需在 6-32 位之间');
     if (newPassword !== confirmPassword) throw new ApiError(400, '两次输入的新密码不一致');
-
+    // 形状校验通过才计费（同 login 约定）
+    enforceRateLimit(request, 'findPassword');
     const user = await getUserByUsername(env, username);
     if (!user || user.email !== email) throw new ApiError(400, '用户名与邮箱不匹配');
     if (!(await verifyPassword(oldPassword, user.password))) throw new ApiError(400, '原密码错误');

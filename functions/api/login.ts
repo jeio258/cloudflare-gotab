@@ -8,11 +8,11 @@ import { enforceRateLimit } from '../lib/ratelimit';
 export const onRequestPost = defineHandler({
   body: true,
   run: async ({ env, request, body }) => {
-    enforceRateLimit(request, 'login');
     const username = String(body.username || '').trim();
     const password = String(body.password || '');
     if (!username || !password) throw new ApiError(400, '用户名和密码不能为空');
-
+    // 形状校验通过才计费：垃圾请求不消耗配额，真实爆破尝试仍被计数
+    enforceRateLimit(request, 'login');
     const user = await getUserByUsername(env, username);
     if (!user || !(await verifyPassword(password, user.password))) {
       throw new ApiError(400, '用户名或密码错误');
