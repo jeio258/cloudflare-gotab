@@ -1,8 +1,8 @@
 # Gotab-cf 项目功能说明与实施报告
 
-> 把官方 gotab-personal（新标签页）**前端原样搬上 Cloudflare Pages**，后端重写为**同一项目的 Pages Functions 精简实现**。功能覆盖：多账号与注册、云同步、资料编辑、公告、默认主页、最小管理后台、挂件、只读分享页、搜索联想同源代理。
+> 新标签页站点，前端资产为 Vite 构建产物（React SPA，兼作 Chrome MV3 扩展页面），**已于 2026-10-13 冻结并自主化**（不再跟踪上游更新，见 §1）；后端为同一 Cloudflare Pages 项目内的 Pages Functions 精简实现。功能覆盖：多账号与注册、云同步、资料编辑、公告、默认主页、最小管理后台、挂件、只读分享页、搜索联想同源代理。
 >
-> 线上地址：**https://gotab-cf.pages.dev**
+> 线上地址：**https://tab.kfkf.asia**
 
 ---
 
@@ -10,15 +10,17 @@
 
 | 项 | 说明 |
 |---|---|
-| 前端 | 官方 `gotab-personal/web`（Vite 构建产物，React SPA，兼作 Chrome MV3 扩展页面），原样部署并做静态预处理 |
+| 前端 | 自有资产 `web/`（Vite 构建产物，React SPA，兼作 Chrome MV3 扩展页面）。**冻结于 2026-10-13**：不再跟踪上游更新；后续改动限产物级优化（CSP/HSTS/缓存/脚本调度等，经 `prepare` 注入），质量由 `npm run perf` 基线守护（桌面冷/移动冷/热回访三档，`--ci` 防回归） |
 | 后端 | 与前端同一 Cloudflare Pages 项目内的 Pages Functions（同域同源，无 CORS） |
 | 存储 | Cloudflare D1（users / user_data / notices / default_data / default_data_history） |
 | 鉴权 | 登录签发 JWT(HMAC-SHA256)，请求头 `Authorization: <token>`；口令 scrypt 哈希 |
 | 注册 | 无验证码开放注册，仅用户名唯一性约束；内置 isolate 内存限流（login/register/findPassword，20 次/60s，形状校验后计数），生产精确兑底见 §9 WAF 建议 |
 | 角色 | 支持多账号（管理员 userType=1 / 普通 0），后台仅管理员可用 |
-| 仓库 | `/home/lyxy/pi/gotab-cf` |
+| 仓库 | `/home/lyxy/pi/cloudflare-gotab` |
 
 `dist/` 由 `npm run prepare` 生成，是 Pages 部署目录（静态 + functions + overrides），不入库。
+
+**冻结与自主化说明**：前端产物视为自有资产，不随上游版本迭代；运行时对上游的依赖已全部消除——资源库/壁纸库/推荐接口经 `/api/wg` 同源代理（服务端转发 web.gotab.cn），浏览器只见同域（`prepare` 构建期替换 + 冻结护栏 e2e 断言）；挂件数据源（uapis 等）同样走服务端代理。逆向分析报告（`逆向分析报告.md`，本地留档）记录了拆包结构与功能清单，供后续决策。
 
 ---
 
@@ -104,6 +106,8 @@ gotab-cf（一个 Cloudflare Pages 项目，自动域名 *.pages.dev）
 - **上传类**：头像上传器、卡片/壁纸纯"上传"按钮隐藏（无 R2）；图标取 uapis favicon_url、壁纸走外部 URL 填址
 - **卡片"推送收录"开关**：siteConfig `cardPush='close'` 关闭
 - **搜索联想同源化**：前端直连 `baidu.com/sugrec` 的 URL 在 prepare 阶段替换为 `/api/search-suggest?wd=`
+- **上游同源代理化**：前端直连 `web.gotab.cn`（资源库/壁纸库/推荐 API 与相对图片路径）在 prepare 阶段整体替换为 `/api/wg`（后端 `functions/api/wg/[[path]].ts` 服务端转发，浏览器零跨域直连）
+- **补丁资产重哈希**：prepare 修改哈希 JS 内容后按 sha1 重命名并级联更新引用——`/assets/*` 是 immutable 长缓存，改名才能让回访用户拿到新内容（否则最长一年旧 bundle）
 
 实施载体：`scripts/prepare.mjs` + `scripts/overrides.css` / `overrides.js` + `dist/siteConfig.js`。
 
@@ -119,7 +123,7 @@ gotab-cf（一个 Cloudflare Pages 项目，自动域名 *.pages.dev）
 - 默认主页：管理员"编辑默认数据"→ 游客按更新时间获取
 - 最小管理后台 `/console`：用户管理、默认主页历史、公告管理
 - 只读分享页 `/s/<share_id 或用户名>`
-- 资源库/壁纸库浏览（直连官方 web.gotab.cn）
+- 资源库/壁纸库浏览（经 `/api/wg` 同源代理，服务端转发上游 web.gotab.cn）
 - 本地设置全套、迁移备份/重置回退（本地）
 - 纯本地小组件（时钟/日历/倒数日/记事本/人民币大写/iframe/股票）
 - 挂件：天气、热搜(微博/百度)、一言、汇率
@@ -155,13 +159,14 @@ gotab-cf（一个 Cloudflare Pages 项目，自动域名 *.pages.dev）
 ### 常用命令
 | 命令 | 作用 |
 |---|---|
-| `npm run prepare` | 生成 `dist/`（模板替换/站点配置/overrides/搜索URL替换/拷贝 functions） |
+| `npm run prepare` | 生成 `dist/`（模板替换/站点配置/overrides/搜索URL替换/上游同源替换/拷贝 functions） |
 | `npm run dev` | 本地预览（127.0.0.1:8799，含本地 D1） |
-| `npm run deploy` | 部署到 Pages 生产分支（gotab-cf.pages.dev） |
+| `npm run deploy` | 部署到 Pages 生产分支（tab.kfkf.asia） |
 | `npm run db:migrate` / `db:migrate:local` | D1 **全新库完整建表**（幂等，含全部列/表/索引；远程/本地） |
 | `npm run typecheck` | TS 类型检查（`tsc --noEmit`） |
 | `npm run db:migrate:batch1`…`batch3`（+`:local`） | 各期迁移 |
 | `npm run account:create` | 建号/改密（加 `--remote` 写远程） |
+| `npm run perf` | 性能基线三档（桌面冷/移动冷/热回访；`--ci` 防回归，基线见 `tests/perf/baseline.json`） |
 | `npm test` | 运行 `tests/e2e.mjs`（需先起本地预览；远程用环境变量，见下） |
 
 ### 测试
@@ -210,7 +215,7 @@ schema.sql               D1 基础 DDL
 - 上传类（R2）、绑定邮箱（SMTP/QQ）、称号审核等未做
 - 天气 AQI/tips 字段缺失（免费源限制）
 - robots/sitemap 同源化默认自定义域 tab.kfkf.asia（prepare 时 `SITE_ORIGIN` 可覆盖）
-- 前端"每日宝藏"等能力直连官方 web.gotab.cn 推荐接口（跨域），官方策略变更会静默失效
+- 前端"每日宝藏"等能力经 `/api/wg` 同源代理访问上游 web.gotab.cn（服务端转发，浏览器无跨域直连）；上游服务器不可用时该功能静默降级（接口 502/空列表）
 - 第三方 API 例外：汇率用 `api.frankfurter.app`、搜索联想用百度 `sugrec`（经同源代理）；其余均走 uapis.cn
 - 找回密码现要求**原密码**（安全收敛）；无邮件服务前不宜作为"忘记密码"使用
 - 分享页需 `share_enabled=1` 才可读（未开启返回 `2`＝已停止分享），避免隐私越权

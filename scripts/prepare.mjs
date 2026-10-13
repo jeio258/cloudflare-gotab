@@ -24,6 +24,12 @@ const EXT_ONLY = [
 ];
 for (const f of EXT_ONLY) rmSync(join(dist, f), { recursive: true, force: true });
 
+// 补丁前快照：后续各 patch 会改哈希资产内容（不改名），与 immutable 长缓存冲突，需在末尾重哈希级联
+const origJs = new Map();
+for (const f of readdirSync(join(dist, 'assets')).filter((x) => x.endsWith('.js'))) {
+  origJs.set(f, readFileSync(join(dist, 'assets', f), 'utf8'));
+}
+
 // 替换 index.html 的 Go 模板占位符
 const indexPath = join(dist, 'index.html');
 let html = readFileSync(indexPath, 'utf8');
@@ -114,8 +120,8 @@ writeFileSync(
     '  Referrer-Policy: strict-origin-when-cross-origin',
     '  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()',
     // CSP 实用级：拦注入型 XSS；放宽项均有依据（无 eval；样式需 unsafe-inline（React 内联+补丁<style>）；
-    // 自定义壁纸/图标走 https: 任意域；iframe 挂件需 frame-src https:；图片 blob 预览；控制台推荐接口 web.gotab.cn）
-    '  Content-Security-Policy: default-src \'self\'; script-src \'self\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data: blob: https:; connect-src \'self\' https://web.gotab.cn; font-src \'self\' data:; media-src \'self\' https: blob:; frame-src \'self\' https:; worker-src \'self\' blob:; object-src \'none\'; base-uri \'self\'; frame-ancestors \'self\'; form-action \'self\'',
+    // 自定义壁纸/图标走 https: 任意域；iframe 挂件需 frame-src https:；图片 blob 预览；上游已同源代理化故 connect-src 仅 self）
+    '  Content-Security-Policy: default-src \'self\'; script-src \'self\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data: blob: https:; connect-src \'self\'; font-src \'self\' data:; media-src \'self\' https: blob:; frame-src \'self\' https:; worker-src \'self\' blob:; object-src \'none\'; base-uri \'self\'; frame-ancestors \'self\'; form-action \'self\'',
     '',
   ].join('\n')
 );
@@ -134,6 +140,21 @@ for (const f of mainFiles) {
   }
 }
 if (patched === 0) console.warn('[prepare] 未命中百度联想 URL，请检查前端产物');
+
+// 上游同源代理化：前端直连 web.gotab.cn（资源库/壁纸库/推荐）改为 /api/wg 同源代理
+// 全量替换同一字面量：同时覆盖 API 基址、dw() 默认址比较与 mw() 相对图片拼接
+const WG_SRC = 'https://web.gotab.cn';
+const WG_DST = '/api/wg';
+let wgPatched = 0;
+for (const f of readdirSync(join(dist, 'assets')).filter((x) => x.endsWith('.js'))) {
+  const p = join(dist, 'assets', f);
+  const c = readFileSync(p, 'utf8');
+  if (c.includes(WG_SRC)) {
+    writeFileSync(p, c.split(WG_SRC).join(WG_DST));
+    wgPatched++;
+  }
+}
+if (wgPatched === 0) console.warn('[prepare] 未命中 web.gotab.cn URL，请检查前端产物');
 
 // 品牌替换：作者标识（doxwant/dengxiwang）-> 本仓库地址与 GitHub 图标
 const REPO_URL = 'https://github.com/jeio258/cloudflare-tab';
@@ -162,6 +183,48 @@ for (const f of readdirSync(join(dist, 'assets')).filter((x) => x.endsWith('.js'
   }
 }
 if (brandPatched === 0) console.warn('[prepare] 未命中作者品牌字符串，请检查前端产物');
+
+// 补丁后重哈希级联：内容被改的 JS 文件按 sha1 重命名并全局更新引用（index.html + 各 chunk import），
+// 否则与 /assets/* 的 immutable 长缓存冲突——回访用户会持续拿到旧 bundle（补丁不生效，实测证实）
+const assetsDir = join(dist, 'assets');
+let renamed = 0;
+for (let iter = 0; iter < 10; iter++) {
+  // 1) 对内容与快照不同的文件重命名（含上一轮引用更新产生的变化）
+  const rename = new Map();
+  for (const f of readdirSync(assetsDir).filter((x) => x.endsWith('.js'))) {
+    if (!origJs.has(f)) continue; // 新生成文件（如合并 CSS 之外不会有）
+    const p = join(assetsDir, f);
+    const content = readFileSync(p, 'utf8');
+    if (content === origJs.get(f)) continue;
+    const hash = createHash('sha1').update(content).digest('hex').slice(0, 8);
+    const newName = f.replace(/(\.js)$/, `-${hash}$1`);
+    if (newName !== f) {
+      writeFileSync(join(assetsDir, newName), content);
+      rename.set(f, newName);
+    }
+  }
+  if (!rename.size) break;
+  // 2) 全局更新引用（含 index.html），更新后内容变化会进入下一轮重命名
+  const targets = [...readdirSync(assetsDir).filter((x) => x.endsWith('.js')), 'index.html'];
+  for (const t of targets) {
+    const p = t === 'index.html' ? indexPath : join(assetsDir, t);
+    let c = readFileSync(p, 'utf8');
+    let mod = false;
+    for (const [from, to] of rename) {
+      if (c.includes(from)) {
+        c = c.split(from).join(to);
+        mod = true;
+      }
+    }
+    if (mod) writeFileSync(p, c);
+  }
+  // 3) 删除旧名文件，标记本轮重命名数
+  for (const old of rename.keys()) {
+    if (existsSync(join(assetsDir, old))) rmSync(join(assetsDir, old));
+  }
+  renamed += rename.size;
+}
+if (renamed > 0) console.log(`[prepare] 重哈希 ${renamed} 个补丁资产（immutable 缓存下保证补丁可达）`);
 
 // sitemap：替换官方域名，剔除扩展专属页面（/newtab、/popup 已不在部署产物中）
 const sitemapPath = join(dist, 'sitemap.xml');
