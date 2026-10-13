@@ -75,6 +75,20 @@ const eq = (name, got, want) => {
 
 const api = await playwrightRequest.newContext();
 const okJson = async (resp) => ({ status: resp.status(), body: await resp.json().catch(() => null) });
+// 限流幂等：429 时等待窗口重置(62s)后重试一次，避免连跑 e2e 互撞（配合 20/60s 窗口）
+let rateWaitDone = false;
+async function loginPost(data) {
+  let r = await api.post(`${base}/api/login`, { data });
+  let body = await r.json().catch(() => null);
+  if (body?.code === 429 && !rateWaitDone) {
+    rateWaitDone = true;
+    log('(login 429，等待限流窗口重置 62s)');
+    await new Promise((res) => setTimeout(res, 62000));
+    r = await api.post(`${base}/api/login`, { data });
+    body = await r.json().catch(() => null);
+  }
+  return { r, body };
+}
 const cleanupUsers = [];
 
 // 1. 静态与兜底
@@ -100,8 +114,7 @@ const cleanupUsers = [];
 
 // 2. 登录错误
 {
-  const r = await api.post(`${base}/api/login`, { data: { username: USER, password: 'wrong' } });
-  const { body } = await okJson(r);
+  const { body } = await loginPost({ username: USER, password: 'wrong' });
   eq('wrong pwd code', body?.code, 400);
 }
 
@@ -135,8 +148,7 @@ const cleanupUsers = [];
   const { body: bc } = await okJson(rc);
   eq('emailCode 已下线(兑底404)', bc?.code, 404);
   // 新用户登录(userType=0)
-  const r3 = await api.post(`${base}/api/login`, { data: { username: uname, password: 'pass123' } });
-  const { body: b3 } = await okJson(r3);
+  const { body: b3 } = await loginPost({ username: uname, password: 'pass123' });
   eq('新用户登录 code', b3?.code, 200);
   eq('新用户 userType=0', b3?.data?.userInfo?.userType, 0);
   const ntoken = b3?.data?.token;
@@ -160,16 +172,14 @@ const cleanupUsers = [];
   });
   const { body: b6 } = await okJson(r6);
   eq('findPassword 重置成功', b6?.code, 200);
-  const r7 = await api.post(`${base}/api/login`, { data: { username: uname, password: 'newpass1' } });
-  const { body: b7 } = await okJson(r7);
+  const { body: b7 } = await loginPost({ username: uname, password: 'newpass1' });
   eq('重置后新密码可登录', b7?.code, 200);
 }
 
 // 3. 正确登录 + getUserInfo + 同步 round-trip（对 D1 残留状态鲁棒）
 let token = '';
 {
-  const r = await api.post(`${base}/api/login`, { data: { username: USER, password: PASS } });
-  const { body } = await okJson(r);
+  const { body } = await loginPost({ username: USER, password: PASS });
   eq('login code', body?.code, 200);
   token = body?.data?.token;
   eq('login token', typeof token === 'string' && token.length > 20, true);
@@ -242,8 +252,7 @@ const authHdr = { authorization: token };
   });
   const { body: b1 } = await okJson(r1);
   eq('changePwd ok', b1?.code, 200);
-  const r2 = await api.post(`${base}/api/login`, { data: { username: USER, password: 'tmp654321' } });
-  const { body: b2 } = await okJson(r2);
+  const { body: b2 } = await loginPost({ username: USER, password: 'tmp654321' });
   eq('login new pwd', b2?.code, 200);
   const token2 = b2?.data?.token;
   await api.post(`${base}/api/user/changePassword`, {
@@ -461,8 +470,7 @@ const authHdr = { authorization: token };
   await api.post(`${base}/api/register`, {
     data: { username: uname, password: 'pass123', email: `${uname}@test.local` },
   });
-  const lr = await api.post(`${base}/api/login`, { data: { username: uname, password: 'pass123' } });
-  const lj = (await okJson(lr)).body;
+  const lj = (await loginPost({ username: uname, password: 'pass123' })).body;
   const rn = await api.post(`${base}/api/console/addNotice`, {
     headers: { authorization: lj?.data?.token },
     data: { title: 'x', content: 'y' },
