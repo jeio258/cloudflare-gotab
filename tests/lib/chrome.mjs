@@ -37,6 +37,7 @@ async function closeStalePages(browser) {
 }
 
 // 启动（或复用已有 CDP 实例）。Windows 防火墙仅放行了固定 CDP 端口（GOTAB_CDP_PORT，默认 9333）
+let launchSeq = 0;
 export async function launchBrowser() {
   const port = Number(process.env.GOTAB_CDP_PORT) || 9333;
   const CHROME = detectChrome();
@@ -55,9 +56,10 @@ export async function launchBrowser() {
   } catch {
     /* 未占用，正常启动 */
   }
+  const profile = `/tmp/cdp-probe-${process.pid}-${launchSeq++}`;
   const proc = spawn(
     CHROME,
-    ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=/tmp/cdp-probe`, '--no-first-run', 'about:blank'],
+    ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run', 'about:blank'],
     { stdio: 'ignore' }
   );
   const ws = await new Promise((resolve, reject) => {
