@@ -2,7 +2,7 @@ import { createToken, verifyPassword } from '../lib/auth';
 import { toUserInfo } from '../lib/contract';
 import { getUserByUsername } from '../lib/db';
 import { defineHandler } from '../lib/handler';
-import { ApiError, json } from '../lib/http';
+import { ApiError } from '../lib/http';
 import { enforceRateLimit } from '../lib/ratelimit';
 
 export const onRequestPost = defineHandler({
@@ -23,4 +23,5 @@ export const onRequestPost = defineHandler({
   },
 });
 
-export const onRequestOptions = () => json(204, null);
+// 204 不得携带 body（此前 json(204,null) 违反协议，浏览器会丢弃）
+export const onRequestOptions = () => new Response(null, { status: 204 });
