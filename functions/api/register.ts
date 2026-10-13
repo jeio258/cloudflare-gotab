@@ -1,6 +1,6 @@
 import { EMAIL_RE, USERNAME_RE, validPassword } from '../lib/account';
 import { hashPassword, newId } from '../lib/auth';
-import { getUserByUsername, insertUser } from '../lib/db';
+import { getUserByUsername, insertUser, isUniqueViolation } from '../lib/db';
 import { defineHandler } from '../lib/handler';
 import { ApiError } from '../lib/http';
 import { enforceRateLimit } from '../lib/ratelimit';
@@ -19,21 +19,27 @@ export const onRequestPost = defineHandler({
 
     if (await getUserByUsername(env, username)) throw new ApiError(400, '用户名已存在');
 
-    await insertUser(env, {
-      id: newId(),
-      username,
-      password: await hashPassword(password),
-      nickname: username,
-      email,
-      phone: '',
-      avatar: '',
-      sex: 0,
-      birthday: '',
-      user_type: 0,
-      status: 1,
-      share_id: newId(),
-      share_enabled: 0,
-    });
+    try {
+      await insertUser(env, {
+        id: newId(),
+        username,
+        password: await hashPassword(password),
+        nickname: username,
+        email,
+        phone: '',
+        avatar: '',
+        sex: 0,
+        birthday: '',
+        user_type: 0,
+        status: 1,
+        share_id: newId(),
+        share_enabled: 0,
+      });
+    } catch (e) {
+      // 并发同名注册绕过预检会命中 UNIQUE 约束，归为业务错误而非 500
+      if (isUniqueViolation(e)) throw new ApiError(400, '用户名已存在');
+      throw e;
+    }
     return null;
   },
 });

@@ -17,6 +17,12 @@ export interface UserRow {
   share_enabled: number;
 }
 
+// D1 唯一约束冲突判定：并发写绕过预检时的兜底（cause 链里是底层 SQLite 错误）
+export const isUniqueViolation = (e: unknown) => {
+  const cause = (e as { cause?: { message?: string } })?.cause;
+  return /UNIQUE/i.test(String(cause?.message || (e as Error)?.message || ''));
+};
+
 export const getUserByUsername = (env: Env, username: string) =>
   env.DB.prepare('select * from users where username = ?')
     .bind(username)

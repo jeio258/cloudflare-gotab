@@ -1,6 +1,6 @@
 import { PHONE_RE, USERNAME_RE } from '../../lib/account';
 import { toUserInfo } from '../../lib/contract';
-import { getUserById, getUserByUsername, updateProfile } from '../../lib/db';
+import { getUserById, getUserByUsername, isUniqueViolation, updateProfile } from '../../lib/db';
 import { defineHandler } from '../../lib/handler';
 import { ApiError } from '../../lib/http';
 
@@ -25,7 +25,13 @@ export const onRequestPost = defineHandler({
       if (exists && exists.id !== user!.id) throw new ApiError(400, '用户名已存在');
     }
 
-    await updateProfile(env, user!.id, { username, nickname, sex, phone, birthday });
+    try {
+      await updateProfile(env, user!.id, { username, nickname, sex, phone, birthday });
+    } catch (e) {
+      // 并发改名绕过预检命中 UNIQUE 约束，归为业务错误
+      if (isUniqueViolation(e)) throw new ApiError(400, '用户名已存在');
+      throw e;
+    }
     const fresh = await getUserById(env, user!.id);
     return toUserInfo(fresh || user!);
   },
