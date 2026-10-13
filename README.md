@@ -14,7 +14,7 @@
 | 后端 | 与前端同一 Cloudflare Pages 项目内的 Pages Functions（同域同源，无 CORS） |
 | 存储 | Cloudflare D1（users / user_data / notices / default_data / default_data_history） |
 | 鉴权 | 登录签发 JWT(HMAC-SHA256)，请求头 `Authorization: <token>`；口令 scrypt 哈希 |
-| 注册 | 无验证码开放注册，仅用户名唯一性约束；滥用防护依赖 Cloudflare 侧 Rate Limiting/Turnstile |
+| 注册 | 无验证码开放注册，仅用户名唯一性约束；内置 isolate 内存限流（login/register/findPassword，20 次/60s，形状校验后计数），生产精确兑底见 §9 WAF 建议 |
 | 角色 | 支持多账号（管理员 userType=1 / 普通 0），后台仅管理员可用 |
 | 仓库 | `/home/lyxy/pi/gotab-cf` |
 
@@ -214,5 +214,5 @@ schema.sql               D1 基础 DDL
 - 第三方 API 例外：汇率用 `api.frankfurter.app`、搜索联想用百度 `sugrec`（经同源代理）；其余均走 uapis.cn
 - 找回密码现要求**原密码**（安全收敛）；无邮件服务前不宜作为"忘记密码"使用
 - 分享页需 `share_enabled=1` 才可读（未开启返回 `2`＝已停止分享），避免隐私越权
-- 登录/找回等端点未内置速率限制，建议在 Cloudflare 侧配置 Rate Limiting 规则
+- 登录/找回/注册内置 isolate 内存限流（20 次/60s/路由/IP，形状校验后计数，多 isolate 下阈值近似放大）——防爆破够用，非精确计量；如需精确阈值，在 Cloudflare dashboard 配 WAF Rate Limiting（免费 1 条）：名称 `gotab-auth-ratelimit`，表达式 `(http.request.uri.path matches "/api/(login|register|findPassword)")`，速率 20 次/60s，动作 Block
 - 旧库升级：全新库用 `db:migrate`；历史库按 `migrations/batch1~3` 增量执行
