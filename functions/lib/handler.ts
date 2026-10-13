@@ -28,6 +28,9 @@ export interface HandlerOptions {
 
 type PagesContext = { request: Request; env: Env };
 
+// 统一请求体上限：防超大 JSON 滥用（各端点另有更严业务限额，如 push/setDefaultData 262144）
+const MAX_BODY_BYTES = 1_000_000;
+
 // 统一入口：鉴权 → body 解析 → run → ok 包装；业务错误经 ApiError 按既有契约映射
 export function defineHandler(opts: HandlerOptions) {
   return async function handler(context: PagesContext): Promise<Response> {
@@ -43,6 +46,9 @@ export function defineHandler(opts: HandlerOptions) {
 
       let body: JsonObject = {};
       if (opts.body) {
+        // 请求体门禁：content-length 缺失（chunked）时由各端点自身限额兜底
+        const len = Number(request.headers.get('content-length') || 0);
+        if (len > MAX_BODY_BYTES) return fail(400, '请求体过大');
         try {
           const parsed: unknown = await request.json();
           if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('body 非对象');

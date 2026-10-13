@@ -2,7 +2,7 @@ import { getUserData, upsertUserData } from '../../lib/db';
 import { defineHandler } from '../../lib/handler';
 import { ApiError } from '../../lib/http';
 
-// 每账号云快照上限（字节，UTF-16 长度近似），防超大 JSON 滥用存储
+// 每账号云快照上限（UTF-8 字节），防超大 JSON 滥用存储
 const MAX_DATA_BYTES = 262144;
 
 export const onRequestPost = defineHandler({
@@ -16,7 +16,8 @@ export const onRequestPost = defineHandler({
       throw new ApiError(400, '参数错误');
     }
     const payload = JSON.stringify(data);
-    if (payload.length > MAX_DATA_BYTES) throw new ApiError(400, '数据过大，无法保存');
+    // UTF-8 字节数：按 UTF-16 length 会让纯中文载荷虚增 3 倍
+    if (new TextEncoder().encode(payload).length > MAX_DATA_BYTES) throw new ApiError(400, '数据过大，无法保存');
 
     const row = await getUserData(env, user!.id);
     const stored = row ? Number(row.timestamp) : 0;
