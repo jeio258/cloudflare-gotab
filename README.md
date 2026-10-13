@@ -135,7 +135,7 @@ gotab-cf（一个 Cloudflare Pages 项目，自动域名 *.pages.dev）
 - 热搜：weibo/百度可用；bilibili/知乎在 CF 侧风控/需登录 → 空列表
 - 天气：免费源无 AQI/生活 tips（字段留空）
 - 分享页公开只读：任何激活账号的主页都可通过其用户名/share_id 公开访问
-- robots.txt / sitemap.xml 已同源化至部署域名（prepare 时取 `CF_PAGES_URL`，绑定自定义域名后需带该环境变量重新构建）
+- robots.txt / sitemap.xml 已同源化至自定义域 tab.kfkf.asia（prepare 时 SITE_ORIGIN 可覆盖）
 
 ---
 
@@ -209,7 +209,7 @@ schema.sql               D1 基础 DDL
 - `/console` 其余页面（仪表盘/审核/资源库/壁纸/上传/配置）未实现，进入会提示"接口不存在"
 - 上传类（R2）、绑定邮箱（SMTP/QQ）、称号审核等未做
 - 天气 AQI/tips 字段缺失（免费源限制）
-- robots/sitemap 同源化依赖 prepare 时的 `CF_PAGES_URL`，绑定自定义域名后需带该变量重新构建
+- robots/sitemap 同源化默认自定义域 tab.kfkf.asia（prepare 时 `SITE_ORIGIN` 可覆盖）
 - 前端"每日宝藏"等能力直连官方 web.gotab.cn 推荐接口（跨域），官方策略变更会静默失效
 - 第三方 API 例外：汇率用 `api.frankfurter.app`、搜索联想用百度 `sugrec`（经同源代理）；其余均走 uapis.cn
 - 找回密码现要求**原密码**（安全收敛）；无邮件服务前不宜作为"忘记密码"使用

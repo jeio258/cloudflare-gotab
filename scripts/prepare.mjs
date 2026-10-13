@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -42,8 +43,8 @@ const siteConfigJs =
 writeFileSync(join(dist, 'siteConfig.js'), siteConfigJs);
 
 // sitemap/robots 域名同源化：替换官方域名，并剔除已剔除的扩展专属页面
-// 正式域名优先取部署注入的 CF_PAGES_URL，其次本地默认值
-const SITE_ORIGIN = (process.env.CF_PAGES_URL || 'https://gotab-cf.pages.dev').replace(/\/+$/, '');
+// 自定义域为规范域名：CF_PAGES_URL 是 pages.dev 哈希地址，写入 robots/sitemap 会与主域名不一致
+const SITE_ORIGIN = (process.env.SITE_ORIGIN || 'https://tab.kfkf.asia').replace(/\/+$/, '');
 
 const robotsPath = join(dist, 'robots.txt');
 if (existsSync(robotsPath)) {
@@ -65,12 +66,32 @@ html = html.replace(
   '<meta name="color-scheme" content="light dark">\n    <style>html{background:#12151a}</style>'
 );
 
-// 死入口清理：注入补丁 CSS/JS
-cpSync(join(root, 'scripts', 'overrides.css'), join(dist, 'overrides.css'));
+// 渲染阻塞削减：全局脚本 defer（siteConfig 与 idleCallback 均只设全局/注册回调，文档序保证执行顺序）
+html = html.replace(
+  '<script type="text/javascript" src="/siteConfig.js"></script>',
+  '<script type="text/javascript" src="/siteConfig.js" defer></script>'
+);
+html = html.replace(
+  '<script type="text/javascript" src="/idleCallback.js"></script>',
+  '<script type="text/javascript" src="/idleCallback.js" defer></script>'
+);
+
+// 渲染阻塞削减：chunk CSS 合并为 1 个请求（引用均为绝对路径/data URI，合并不破坏基址）
+const cssSrcs = [...html.matchAll(/<link rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/g)].map((m) => m[1]);
+if (cssSrcs.length >= 2) {
+  const mergedCss = cssSrcs.map((href) => readFileSync(join(dist, href.replace(/^\//, '')), 'utf8')).join('\n');
+  const mergedName = `main-${createHash('sha1').update(mergedCss).digest('hex').slice(0, 8)}.css`;
+  writeFileSync(join(dist, 'assets', mergedName), mergedCss);
+  // 整块折叠：连续 stylesheet 链接归并为 1 条（勿逐条替换，否则每条都被替换为合并链接）
+  html = html.replace(/(?:<link rel="stylesheet"[^>]*>\s*)+/g, `  <link rel="stylesheet" crossorigin href="/assets/${mergedName}" />\n`);
+}
+
+// 死入口清理：注入补丁 JS；补丁 CSS 内联（内容小，免一次渲染阻塞请求）
 cpSync(join(root, 'scripts', 'overrides.js'), join(dist, 'overrides.js'));
+const overridesCss = readFileSync(join(root, 'scripts', 'overrides.css'), 'utf8');
 html = html.replace(
   '</head>',
-  '  <link rel="stylesheet" href="/overrides.css" />\n' + '  <script defer src="/overrides.js"></script>\n</head>'
+  '  <style>' + overridesCss + '</style>\n' + '  <script defer src="/overrides.js"></script>\n</head>'
 );
 writeFileSync(indexPath, html);
 
@@ -89,6 +110,7 @@ writeFileSync(
     '/*',
     '  X-Content-Type-Options: nosniff',
     '  X-Frame-Options: SAMEORIGIN',
+    '  Strict-Transport-Security: max-age=31536000',
     '  Referrer-Policy: strict-origin-when-cross-origin',
     '  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()',
     '',
