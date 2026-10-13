@@ -80,7 +80,7 @@ gotab-cf（一个 Cloudflare Pages 项目，自动域名 *.pages.dev）
 ### 工具 / 分享 / 挂件 / 搜索
 | 接口 | 说明 |
 |---|---|
-| `POST /api/tools/getWebsiteInfo` | 抓网页标题/描述；**图标一律默认 `https://faviconsnap.com/api/favicon?url=<域名>`**；抓取失败降级不报错 |
+| `POST /api/tools/getWebsiteInfo` | 抓网页标题/描述；图标取 uapis 解析的 favicon_url（无图标/退化 `data:,` 时前端回落内置 `/icons/bookmark.svg`）；抓取失败降级不报错 |
 | `GET /api/getShareData` | 只读分享：`path`=share_id 或用户名 → `{shareData}`；未命中 null；被禁账号 data:3 |
 | `GET /api/search-suggest?wd=&cb=` | 搜索联想 JSONP（`cb({g:[{q}]})`），服务端转百度 sugrec |
 | `GET /api/getCityList` | 41 城坐标表 |
@@ -101,7 +101,7 @@ gotab-cf（一个 Cloudflare Pages 项目，自动域名 *.pages.dev）
 - **已启用/可用**：注册入口与"找回密码"恢复可见（功能已实现）
 - **仍隐藏**：绑定邮箱、申请称号（无邮件/无审核流）
 - **抽屉菜单隐藏**：个性分享（分享页改为直达 `/s/<用户名>`）、版本说明、捐赠打赏、关于我们；**保留**迁移备份/重置回退
-- **上传类**：头像上传器、卡片/壁纸纯"上传"按钮隐藏（无 R2）；图标走 faviconsnap、壁纸走外部 URL 填址
+- **上传类**：头像上传器、卡片/壁纸纯"上传"按钮隐藏（无 R2）；图标取 uapis favicon_url、壁纸走外部 URL 填址
 - **卡片"推送收录"开关**：siteConfig `cardPush='close'` 关闭
 - **搜索联想同源化**：前端直连 `baidu.com/sugrec` 的 URL 在 prepare 阶段替换为 `/api/search-suggest?wd=`
 
@@ -114,7 +114,7 @@ gotab-cf（一个 Cloudflare Pages 项目，自动域名 *.pages.dev）
 ### ✅ 可用
 - 登录 / 注册 / 找回密码 / 退出 / 修改密码 / 资料编辑（昵称/性别/手机/生日）
 - 多账号；云同步自动推送/拉取/409 冲突弹窗/手动推拉；游客本地数据
-- 添加网址卡片、"获取信息"（faviconsnap 默认图标）、外部图标/壁纸 URL
+- 添加网址卡片、"获取信息"（uapis 图标解析，无图标回落内置书签图标）、外部图标/壁纸 URL
 - 公告（首页弹层）+ 管理员发布/二次确认
 - 默认主页：管理员"编辑默认数据"→ 游客按更新时间获取
 - 最小管理后台 `/console`：用户管理、默认主页历史、公告管理
@@ -135,7 +135,7 @@ gotab-cf（一个 Cloudflare Pages 项目，自动域名 *.pages.dev）
 - 热搜：weibo/百度可用；bilibili/知乎在 CF 侧风控/需登录 → 空列表
 - 天气：免费源无 AQI/生活 tips（字段留空）
 - 分享页公开只读：任何激活账号的主页都可通过其用户名/share_id 公开访问
-- robots.txt / sitemap.xml 仍指向官方 web.gotab.cn
+- robots.txt / sitemap.xml 已同源化至部署域名（prepare 时取 `CF_PAGES_URL`，绑定自定义域名后需带该环境变量重新构建）
 
 ---
 
@@ -209,7 +209,8 @@ schema.sql               D1 基础 DDL
 - `/console` 其余页面（仪表盘/审核/资源库/壁纸/上传/配置）未实现，进入会提示"接口不存在"
 - 上传类（R2）、绑定邮箱（SMTP/QQ）、称号审核等未做
 - 天气 AQI/tips 字段缺失（免费源限制）
-- robots/sitemap 指向官方域名，绑定自有域名后需改写
+- robots/sitemap 同源化依赖 prepare 时的 `CF_PAGES_URL`，绑定自定义域名后需带该变量重新构建
+- 前端"每日宝藏"等能力直连官方 web.gotab.cn 推荐接口（跨域），官方策略变更会静默失效
 - 第三方 API 例外：汇率用 `api.frankfurter.app`、搜索联想用百度 `sugrec`（经同源代理）；其余均走 uapis.cn
 - 找回密码现要求**原密码**（安全收敛）；无邮件服务前不宜作为"忘记密码"使用
 - 分享页需 `share_enabled=1` 才可读（未开启返回 `2`＝已停止分享），避免隐私越权
