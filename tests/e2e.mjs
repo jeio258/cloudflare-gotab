@@ -1,68 +1,8 @@
 // 端到端 API + UI 测试（headless）。需要本地 wrangler pages dev 已起在 baseUrl。
-import { chromium, request as playwrightRequest } from 'playwright';
-import { spawn } from 'node:child_process';
+import { request as playwrightRequest } from 'playwright';
+import { launchBrowser } from './lib/chrome.mjs';
 
 const base = process.env.GOTAB_BASE_URL || 'http://127.0.0.1:8799';
-// 复用本机已装的 Chrome（WSL 下指向 Windows 侧可执行文件）；Windows Chrome 不支持 stdio 调试管道，改用 CDP 端口连接
-const CHROME = process.env.GOTAB_CHROME_PATH || '/mnt/d/Chrome/App/chrome.exe';
-// browser.close() 对 CDP 连接仅断开不杀进程：残留标签页里的 SPA 会持续回写 localStorage，必须先关页
-async function closeStalePages(browser) {
-  const ctx = browser.contexts()[0];
-  if (ctx) for (const p of ctx.pages()) await p.close().catch(() => {});
-}
-async function launchBrowser() {
-  // Windows 防火墙仅放行了固定 CDP 端口（GOTAB_CDP_PORT，默认 9333）
-  const port = Number(process.env.GOTAB_CDP_PORT) || 9333;
-  // 若已有实例占用该端口则直接复用
-  try {
-    const r = await fetch(`http://127.0.0.1:${port}/json/version`);
-    const j = await r.json();
-    const browser = await chromium.connectOverCDP(j.webSocketDebuggerUrl);
-    await closeStalePages(browser);
-    return {
-      browser,
-      newPage: async (opts) => (browser.contexts()[0] || (await browser.newContext())).newPage(opts),
-      close: async () => {
-        await browser.close().catch(() => {});
-      },
-    };
-  } catch {
-    /* 未占用，正常启动 */
-  }
-  const proc = spawn(
-    CHROME,
-    ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=/tmp/cdp-probe`, '--no-first-run', 'about:blank'],
-    { stdio: 'ignore' }
-  );
-  const ws = await new Promise((resolve, reject) => {
-    let tries = 0;
-    const t = setInterval(async () => {
-      try {
-        const r = await fetch(`http://127.0.0.1:${port}/json/version`);
-        const j = await r.json();
-        clearInterval(t);
-        resolve(j.webSocketDebuggerUrl);
-      } catch {
-        if (++tries > 25) {
-          clearInterval(t);
-          proc.kill();
-          reject(new Error('Chrome CDP 启动超时'));
-        }
-      }
-    }, 300);
-  });
-  const browser = await chromium.connectOverCDP(ws);
-  await closeStalePages(browser);
-  return {
-    browser,
-    newPage: async (opts) => (browser.contexts()[0] || (await browser.newContext())).newPage(opts),
-    close: async () => {
-      await closeStalePages(browser);
-      await browser.close().catch(() => {});
-      proc?.kill();
-    },
-  };
-}
 const USER = process.env.GOTAB_USER || 'test@gotab.local';
 const PASS = process.env.GOTAB_PASS || 'test123456';
 const failures = [];

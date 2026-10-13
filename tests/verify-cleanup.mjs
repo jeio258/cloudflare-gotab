@@ -1,10 +1,10 @@
-import { chromium } from 'playwright';
+import { launchBrowser } from './lib/chrome.mjs';
 
 const base = process.env.GOTAB_BASE_URL || 'http://127.0.0.1:8799';
 const USER = process.env.GOTAB_USER || 'test@gotab.local';
 const PASS = process.env.GOTAB_PASS || 'test123456';
-const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const { browser, newPage, close } = await launchBrowser();
+const page = await newPage({ viewport: { width: 1280, height: 800 } });
 page.on('pageerror', (e) => console.log('[pageerror]', String(e).slice(0, 200)));
 page.on('console', (m) => { if (m.type() === 'error') console.log('[console.error]', m.text().slice(0, 200)); });
 
@@ -64,4 +64,4 @@ const pushVisible = await page.evaluate(() =>
 );
 log('add-card 上传 buttons visible (post-login):', uploadCount, '| 推送收录 refs visible:', pushVisible);
 await page.screenshot({ path: '/tmp/cleanup-addcard.png' });
-await browser.close();
+await close();
