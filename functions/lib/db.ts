@@ -50,7 +50,7 @@ export const insertUser = (env: Env, u: Omit<UserRow, 'created_at'>) =>
       u.status,
       u.share_id,
       u.share_enabled,
-      // 显式绑定 ISO created_at：schema 默认 datetime('now') 为空格分隔格式，与 setDefaultData 等处的 ISO 口径双轨
+      // 显式绑定 ISO created_at：schema 默认 datetime('now') 为空格分隔格式，与 setDefaultData 的 ISO 口径不一致
       new Date().toISOString()
     )
     .run();

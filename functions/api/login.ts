@@ -11,7 +11,7 @@ export const onRequestPost = defineHandler({
     const username = String(body.username || '').trim();
     const password = String(body.password || '');
     if (!username || !password) throw new ApiError(400, '用户名和密码不能为空');
-    // 形状校验通过才计费：垃圾请求不消耗配额，真实爆破尝试仍被计数
+    // 计数在形状校验后（调用点约定见 lib/ratelimit.ts）
     enforceRateLimit(request, 'login');
     const user = await getUserByUsername(env, username);
     if (!user || !(await verifyPassword(password, user.password))) {
@@ -23,5 +23,5 @@ export const onRequestPost = defineHandler({
   },
 });
 
-// 204 不得携带 body（此前 json(204,null) 违反协议，浏览器会丢弃）
+// 204 不得携带 body，勿改回带 body 写法（违反 HTTP 协议）
 export const onRequestOptions = () => new Response(null, { status: 204 });

@@ -11,6 +11,7 @@ export const onRequestPost = defineHandler({
     const content = String(body.content || '');
     if (!title) throw new ApiError(400, '标题不能为空');
 
+    // created_at 显式 ISO：同 insertUser 约定（schema 默认 datetime('now') 非 ISO）
     await env.DB.prepare(
       'insert into notices (id, title, content, status, time_code, created_by, created_at) values (?, ?, ?, 0, ?, ?, ?)'
     )

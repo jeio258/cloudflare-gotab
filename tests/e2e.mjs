@@ -46,7 +46,7 @@ const cleanupUsers = [];
   const { status, body } = await okJson(r404);
   eq('catch-all 200', status, 200);
   eq('catch-all code 404', body?.code, 404);
-  // OPTIONS 预检：204 无 body（回归：曾返回 204 带 "null" 体）
+  // OPTIONS 预检：204 不得携带 body
   const rOpt = await api.fetch(`${base}/api/login`, { method: 'OPTIONS' });
   const optText = await rOpt.text();
   eq('OPTIONS 204 无 body', rOpt.status() === 204 && optText.length === 0, true);
@@ -149,7 +149,7 @@ const authHdr = { authorization: token };
   const { body: bBig } = await okJson(rBig);
   eq('push 超大数据被拒', bBig?.code, 400);
 
-  // UTF-8 字节限额：100K 中文字符=300KB 必须被拒（回归：按 UTF-16 长度旧实现会放行）
+  // UTF-8 字节限额：100K 中文字符=300KB，按字节必须超限拒绝
   const rZh = await api.post(`${base}/api/user/push`, {
     headers: authHdr,
     data: { data: { blob: '中'.repeat(100000) }, timestamp: ts1 + 6, baseTimestamp: ts1 },
@@ -207,10 +207,9 @@ const authHdr = { authorization: token };
   const { body } = await okJson(r);
   eq('getWebsiteInfo code', body?.code, 200);
   eq('getWebsiteInfo title', body?.data?.title, 'Example Domain');
-  // 契约：icon 为空串(前端回落内置图标)或真实 URL；退化占位 data:, 已被归一
+  // 契约：icon 为空串(前端回落内置图标)或真实 URL；退化占位 data:, 必须归一为空串
   eq('getWebsiteInfo icon 合法(空串或 http)',
     typeof body?.data?.icon === 'string' && (body?.data?.icon === '' || /^https?:\/\//.test(body?.data?.icon)), true);
-  // 图标退化占位 data:, 必须被归一为空串（回归：透传会导致前端卡片破图）
   eq('getWebsiteInfo icon 非退化占位', body?.data?.icon !== 'data:,', true);
 }
 
@@ -425,7 +424,7 @@ const authHdr = { authorization: token };
     data: { title: '公告标题', content: '公告内容' },
   });
   eq('addNotice code', (await okJson(a1)).body?.code, 200);
-  // 请求体门禁：超大 content 直接 400（回归：handler 层统一限额）
+  // 请求体门禁：超大 content 直接 400
   const aBig = await api.post(`${base}/api/console/addNotice`, {
     headers: { authorization: token },
     data: { title: 'big-body-test', content: 'x'.repeat(1200000) },

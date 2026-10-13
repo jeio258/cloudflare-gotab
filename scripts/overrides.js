@@ -194,7 +194,7 @@
     btn.setAttribute('aria-label', label);
   };
 
-  // 一次全文档遍历覆盖所有隐藏/标注动作（原 5 次 querySelectorAll 合并为 1 次）
+  // 一次全文档遍历承载全部隐藏/标注动作（避免单次扫描多次整树遍历）
   const SCAN_SEL =
     '.ant-menu-item, .ant-menu-submenu-title, li[role="menuitem"], button, .ant-menu-item-group, a';
 
@@ -233,7 +233,7 @@
 
     // 品牌替换兜底
     for (const a of anchors) fixAttribution(a);
-    // 无障碍：图标按钮补可访问名（保持原作用域：仅 antd/icon 类按钮）
+    // 无障碍：图标按钮补可访问名（仅 antd/icon 类按钮，勿扩大作用域）
     for (const b of buttons) {
       if (b.matches('button.ant-btn, button[class*="ant-btn"], button[class*="icon"]')) fixIconLabel(b);
     }

@@ -74,6 +74,7 @@ export async function verifyToken(env: Env, token: string): Promise<string | nul
     const valid = await crypto.subtle.verify('HMAC', key, b64urlDecode(sig), enc.encode(`${h}.${p}`));
     if (!valid) return null;
     const header = JSON.parse(dec.decode(b64urlDecode(h))) as { alg?: string };
+    // 只接受 HS256，防算法混淆（新增其他 alg 分支时必须同步改此处校验）
     if (header.alg !== 'HS256') return null;
     const payload = JSON.parse(dec.decode(b64urlDecode(p))) as { uid?: string; exp?: number };
     if (!payload.uid) return null;
