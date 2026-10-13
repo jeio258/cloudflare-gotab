@@ -92,6 +92,10 @@ const cleanupUsers = [];
   const { status, body } = await okJson(r404);
   eq('catch-all 200', status, 200);
   eq('catch-all code 404', body?.code, 404);
+  // OPTIONS 预检：204 无 body（回归：曾返回 204 带 "null" 体）
+  const rOpt = await api.fetch(`${base}/api/login`, { method: 'OPTIONS' });
+  const optText = await rOpt.text();
+  eq('OPTIONS 204 无 body', rOpt.status() === 204 && optText.length === 0, true);
 }
 
 // 2. 登录错误
@@ -195,6 +199,14 @@ const authHdr = { authorization: token };
   const { body: bBig } = await okJson(rBig);
   eq('push 超大数据被拒', bBig?.code, 400);
 
+  // UTF-8 字节限额：100K 中文字符=300KB 必须被拒（回归：按 UTF-16 长度旧实现会放行）
+  const rZh = await api.post(`${base}/api/user/push`, {
+    headers: authHdr,
+    data: { data: { blob: '中'.repeat(100000) }, timestamp: ts1 + 6, baseTimestamp: ts1 },
+  });
+  const { body: bZh } = await okJson(rZh);
+  eq('push 中文超字节被拒', bZh?.code, 400);
+
   // 冲突：baseTimestamp 取一个肯定小于已存的数
   const r3 = await api.post(`${base}/api/user/push`, {
     headers: authHdr,
@@ -246,7 +258,11 @@ const authHdr = { authorization: token };
   const { body } = await okJson(r);
   eq('getWebsiteInfo code', body?.code, 200);
   eq('getWebsiteInfo title', body?.data?.title, 'Example Domain');
-  eq('getWebsiteInfo icon 由 uapis 解析为字符串', typeof body?.data?.icon === 'string' && body.data.icon.length > 0, true);
+  // 契约：icon 为空串(前端回落内置图标)或真实 URL；退化占位 data:, 已被归一
+  eq('getWebsiteInfo icon 合法(空串或 http)',
+    typeof body?.data?.icon === 'string' && (body?.data?.icon === '' || /^https?:\/\//.test(body?.data?.icon)), true);
+  // 图标退化占位 data:, 必须被归一为空串（回归：透传会导致前端卡片破图）
+  eq('getWebsiteInfo icon 非退化占位', body?.data?.icon !== 'data:,', true);
 }
 
 // 6.5 挂件接口（游客可调，公共数据）
@@ -461,6 +477,12 @@ const authHdr = { authorization: token };
     data: { title: '公告标题', content: '公告内容' },
   });
   eq('addNotice code', (await okJson(a1)).body?.code, 200);
+  // 请求体门禁：超大 content 直接 400（回归：handler 层统一限额）
+  const aBig = await api.post(`${base}/api/console/addNotice`, {
+    headers: { authorization: token },
+    data: { title: 'big-body-test', content: 'x'.repeat(1200000) },
+  });
+  eq('addNotice 超大 body 被拒', (await okJson(aBig)).body?.code, 400);
   const l1 = await api.get(`${base}/api/console/getNoticeList`, { headers: { authorization: token } });
   const l1b = (await okJson(l1)).body;
   const noticeId = l1b?.data?.list?.[0]?.id;
@@ -505,6 +527,12 @@ const authHdr = { authorization: token };
   });
   const ulb = (await okJson(ul)).body;
   eq('用户列表非空且含字段', Array.isArray(ulb?.data?.list) && ulb.data.list.length >= 1 && typeof ulb.data.list[0]?.username === 'string', true);
+  // pageSize 钳制：超大分页参数不会放大查询
+  const ulBig = await api.get(`${base}/api/console/getAwaitingApprovalUserAppellationList?pageSize=999999`, {
+    headers: { authorization: token },
+  });
+  const ulBigb = (await okJson(ulBig)).body;
+  eq('pageSize 钳制 ≤100', Array.isArray(ulBigb?.data?.list) && ulBigb.data.list.length <= 100, true);
   const cu = `cu${Date.now() % 1000000}`;
   const cu1 = await api.post(`${base}/api/console/addUser`, {
     headers: { authorization: token },
