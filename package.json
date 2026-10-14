@@ -15,6 +15,8 @@
     "db:migrate:batch2:local": "wrangler d1 execute gotab-cf-db --local --file migrations/batch2.sql",
     "db:migrate:batch3": "wrangler d1 execute gotab-cf-db --file migrations/batch3.sql",
     "db:migrate:batch3:local": "wrangler d1 execute gotab-cf-db --local --file migrations/batch3.sql",
+    "db:migrate:batch4": "wrangler d1 execute gotab-cf-db --file migrations/batch4.sql",
+    "db:migrate:batch4:local": "wrangler d1 execute gotab-cf-db --local --file migrations/batch4.sql",
     "account:create": "node scripts/create-account.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node tests/e2e.mjs",

@@ -8,14 +8,14 @@ const MAX_REQUESTS = 20;
 
 const hits = new Map<string, { count: number; resetAt: number }>();
 
-export function enforceRateLimit(request: Request, route: string) {
+export function enforceRateLimit(request: Request, route: string, max = MAX_REQUESTS) {
   const ip = request.headers.get('cf-connecting-ip') || 'local';
   const key = `${route}:${ip}`;
   const now = Date.now();
   const slot = hits.get(key);
   if (!slot || slot.resetAt <= now) {
     hits.set(key, { count: 1, resetAt: now + WINDOW_MS });
-  } else if (++slot.count > MAX_REQUESTS) {
+  } else if (++slot.count > max) {
     throw new ApiError(429, '操作过于频繁，请稍后再试');
   }
   // 防 Map 无限增长：超阈值时顺手清理过期项

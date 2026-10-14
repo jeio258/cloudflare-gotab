@@ -31,6 +31,39 @@ async function loginPost(data) {
 }
 const cleanupUsers = [];
 
+// 清理本轮注册的测试用户（正常收尾与崩溃兜底共用）
+async function purgeTestUsers(tk) {
+  for (const uname of cleanupUsers) {
+    try {
+      const r = await api.get(`${base}/api/console/getAwaitingApprovalUserAppellationList?username=${uname}`, {
+        headers: { authorization: tk },
+      });
+      const row = (await okJson(r)).body?.data?.list?.[0];
+      if (row?.id) {
+        await api.post(`${base}/api/console/deleteUser`, { headers: { authorization: tk }, data: { userId: row.id } });
+        log(`cleanup user ${uname}`);
+      }
+    } catch {
+      /* 忽略清理失败 */
+    }
+  }
+}
+
+// 崩溃兜底：中途抛错（如 UI 段异常）也清掉已注册用户，避免本地库残留（重登管理员取 token）
+let purging = false;
+process.on('uncaughtException', async (err) => {
+  if (purging) return;
+  purging = true;
+  console.error('\n[e2e] 异常退出，尝试清理测试用户：', String(err).split('\n')[0].slice(0, 160));
+  try {
+    const b = (await loginPost({ username: USER, password: PASS })).body;
+    await purgeTestUsers(b?.data?.token || '');
+  } catch {
+    /* 忽略 */
+  }
+  process.exit(1);
+});
+
 // 1. 静态与兜底
 {
   const r = await api.get(`${base}/`);
@@ -452,6 +485,12 @@ const authHdr = { authorization: token };
     data: { id: noticeId },
   });
   eq('deleteNotice code', (await okJson(d1)).body?.code, 200);
+  // rejectNotice 复用 deleteNotice 实现（驳回即删除）；对不存在 id 仍 200（删除幂等）
+  const rj = await api.post(`${base}/api/console/rejectNotice`, {
+    headers: { authorization: token },
+    data: { id: 'no-such-id' },
+  });
+  eq('rejectNotice 可调用 code200', (await okJson(rj)).body?.code, 200);
 
   // 默认主页
   const payload = { home: { showMode: 'wallpaper' }, card: { listData: [] } };
@@ -583,23 +622,7 @@ const authHdr = { authorization: token };
 }
 
 // 8. 清理测试注册的普通用户（管理员删除）
-for (const uname of cleanupUsers) {
-  try {
-    const r = await api.get(`${base}/api/console/getAwaitingApprovalUserAppellationList?username=${uname}`, {
-      headers: { authorization: token },
-    });
-    const row = (await okJson(r)).body?.data?.list?.[0];
-    if (row?.id) {
-      await api.post(`${base}/api/console/deleteUser`, {
-        headers: { authorization: token },
-        data: { userId: row.id },
-      });
-      log(`cleanup user ${uname}`);
-    }
-  } catch {
-    /* 忽略清理失败 */
-  }
-}
+await purgeTestUsers(token);
 
 await api.dispose();
 console.log(failures.length === 0 ? '\nALL PASSED' : `\nFAILURES: ${failures.length} ${failures.join(', ')}`);
