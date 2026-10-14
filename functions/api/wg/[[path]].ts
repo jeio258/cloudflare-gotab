@@ -1,3 +1,4 @@
+import { json } from '../../lib/http';
 import { UA } from '../../lib/upstream';
 
 // 上游同源代理：/api/wg/* → https://web.gotab.cn/*
@@ -23,7 +24,17 @@ async function proxy(context: WgContext) {
     },
   };
   if (body.byteLength) init.body = body;
-  const resp = await fetch(`${WG_BASE}/${rest}${url.search}`, init);
+  // 上游超时兜底：无此保护时上游挂起会一直占住请求（Pages 侧超时）；异常统一降级为 502
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12000);
+  let resp: Response;
+  try {
+    resp = await fetch(`${WG_BASE}/${rest}${url.search}`, { ...init, signal: ctrl.signal });
+  } catch {
+    return json(502, { code: 502, msg: '上游服务暂不可用', data: null });
+  } finally {
+    clearTimeout(timer);
+  }
   const headers = {
     'content-type': resp.headers.get('content-type') || 'application/json',
     // 壁纸/资源列表变更不频繁，5 分钟缓存即可（图片路径同样受益）

@@ -468,6 +468,21 @@ const authHdr = { authorization: token };
   eq('getDefaultData 回读一致', JSON.stringify(gdb?.data?.data), JSON.stringify(payload));
   eq('getDefaultData 含 created_at', typeof gdb?.data?.created_at === 'string', true);
 
+  // 限额口径统一：150000 中文字符≈450KB，超 256KB 字节上限必须被拒（同 push 口径）
+  const sBig = await api.post(`${base}/api/console/setDefaultData`, {
+    headers: { authorization: token },
+    data: { data: { b: '中'.repeat(150000) } },
+  });
+  eq('setDefaultData 中文超字节被拒', (await okJson(sBig)).body?.code, 400);
+
+  // 仪表盘统计（原缺 → 兜底 404，前端报「接口不存在」且统计恒 0）
+  const ds = await api.get(`${base}/api/console/getDashboardStats`, { headers: { authorization: token } });
+  const dsb = (await okJson(ds)).body;
+  eq('getDashboardStats code', dsb?.code, 200);
+  eq('getDashboardStats 字段齐全',
+    ['total_users', 'new_users_today', 'total_user_shares', 'total_websites'].every((k) => typeof dsb?.data?.[k] === 'number'), true);
+  eq('getDashboardStats 用户数≥1', (dsb?.data?.total_users || 0) >= 1, true);
+
   // 用户管理（列表/新增/删除）
   const ul = await api.get(`${base}/api/console/getAwaitingApprovalUserAppellationList`, {
     headers: { authorization: token },

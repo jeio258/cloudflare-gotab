@@ -12,7 +12,8 @@ export const onRequestPost = defineHandler({
 
     const now = new Date().toISOString();
     const dataJson = JSON.stringify(data);
-    if (dataJson.length > 262144) throw new ApiError(400, '数据过大，无法保存');
+    // 与 user/push 同口径：按 UTF-8 字节（按 UTF-16 length 会让纯中文虚增 3 倍，放行超限载荷）
+    if (new TextEncoder().encode(dataJson).length > 262144) throw new ApiError(400, '数据过大，无法保存');
     const db = env.DB;
     // 原子提交：当前默认主页 + 历史快照（仅最新一条启用）
     await db.batch([
