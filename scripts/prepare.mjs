@@ -121,7 +121,10 @@ writeFileSync(
     '  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()',
     // CSP 实用级：拦注入型 XSS；放宽项均有依据（无 eval；样式需 unsafe-inline（React 内联+补丁<style>）；
     // 自定义壁纸/图标走 https: 任意域；iframe 挂件需 frame-src https:；图片 blob 预览；上游已同源代理化故 connect-src 仅 self）
-    '  Content-Security-Policy: default-src \'self\'; script-src \'self\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data: blob: https:; connect-src \'self\'; font-src \'self\' data:; media-src \'self\' https: blob:; frame-src \'self\' https:; worker-src \'self\' blob:; object-src \'none\'; base-uri \'self\'; frame-ancestors \'self\'; form-action \'self\'',
+    // script-src 额外放行 CF Web Analytics 的 beacon 域名（否则被拦、控制台报错）。
+    // 注意：CF 另注入一段每请求变化的 bot 内联脚本（__CF$cv$params），无法用 sha256 白名单——
+    // 如需彻底消除该条告警，只能在 CF 控制台关闭对应注入，或改用 unsafe-inline（会削弱 XSS 防护，勿轻用）
+    '  Content-Security-Policy: default-src \'self\'; script-src \'self\' https://static.cloudflareinsights.com; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data: blob: https:; connect-src \'self\'; font-src \'self\' data:; media-src \'self\' https: blob:; frame-src \'self\' https:; worker-src \'self\' blob:; object-src \'none\'; base-uri \'self\'; frame-ancestors \'self\'; form-action \'self\'',
     '',
   ].join('\n')
 );

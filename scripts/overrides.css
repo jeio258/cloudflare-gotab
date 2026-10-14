@@ -20,5 +20,13 @@ div:has(> a[href="https://beian.miit.gov.cn"]) {
     height: 44px;
     transform: translateY(-50%);
   }
+
+  /* 图标按钮：触屏命中区扩到 44px。它们 overflow:hidden，伪元素扩展会被裁剪（实测无效），
+     故直接放大盒子——图标自身尺寸不变，仅按钮间距略增，text/link 变体无明显视觉变化
+     （头像未纳入：放大圆形属可见视觉变化，另行评估） */
+  .ant-btn:has(.anticon) {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 

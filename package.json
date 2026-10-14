@@ -20,6 +20,7 @@
     "account:create": "node scripts/create-account.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node tests/e2e.mjs",
+    "test:mobile": "node tests/mobile.mjs",
     "perf": "node tests/perf/run-perf.mjs"
   },
   "devDependencies": {
