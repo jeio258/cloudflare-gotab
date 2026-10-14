@@ -145,16 +145,27 @@ if (patched === 0) console.warn('[prepare] 未命中百度联想 URL，请检查
 // 全量替换同一字面量：同时覆盖 API 基址、dw() 默认址比较与 mw() 相对图片拼接
 const WG_SRC = 'https://web.gotab.cn';
 const WG_DST = '/api/wg';
+// 默认卡片图标指向上游 www 官方站 —— 同源化到本地同名图标（产物已含 web/icons/logo.svg），消除首屏跨域
+const LOGO_SRC = 'https://www.gotab.cn/icons/logo.svg';
+const LOGO_DST = '/icons/logo.svg';
 let wgPatched = 0;
+let logoPatched = 0;
 for (const f of readdirSync(join(dist, 'assets')).filter((x) => x.endsWith('.js'))) {
   const p = join(dist, 'assets', f);
-  const c = readFileSync(p, 'utf8');
+  const orig = readFileSync(p, 'utf8');
+  let c = orig;
+  if (c.includes(LOGO_SRC)) {
+    c = c.split(LOGO_SRC).join(LOGO_DST);
+    logoPatched++;
+  }
   if (c.includes(WG_SRC)) {
-    writeFileSync(p, c.split(WG_SRC).join(WG_DST));
+    c = c.split(WG_SRC).join(WG_DST);
     wgPatched++;
   }
+  if (c !== orig) writeFileSync(p, c);
 }
 if (wgPatched === 0) console.warn('[prepare] 未命中 web.gotab.cn URL，请检查前端产物');
+if (logoPatched === 0) console.warn('[prepare] 未命中 www.gotab.cn logo URL，请检查前端产物');
 
 // 品牌替换：作者标识（doxwant/dengxiwang）-> 本仓库地址与 GitHub 图标
 const REPO_URL = 'https://github.com/jeio258/cloudflare-tab';

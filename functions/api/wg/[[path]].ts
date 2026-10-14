@@ -24,14 +24,23 @@ async function proxy(context: WgContext) {
   };
   if (body.byteLength) init.body = body;
   const resp = await fetch(`${WG_BASE}/${rest}${url.search}`, init);
-  return new Response(resp.body, {
-    status: resp.status,
-    headers: {
-      'content-type': resp.headers.get('content-type') || 'application/json',
-      // 壁纸/资源列表变更不频繁，5 分钟缓存即可（图片路径同样受益）
-      'cache-control': 'public, max-age=300',
-    },
-  });
+  const headers = {
+    'content-type': resp.headers.get('content-type') || 'application/json',
+    // 壁纸/资源列表变更不频繁，5 分钟缓存即可（图片路径同样受益）
+    'cache-control': 'public, max-age=300',
+  };
+  // 响应体同源化：上游 API 返回的绝对/根相对资源 URL 改走本代理，浏览器零跨域
+  // （prepare 只能替换产物字面量，改不到运行时返回的 URL；二进制图片不重写，直接透传流）
+  if (/json|text/i.test(headers['content-type'])) {
+    const text = await resp.text();
+    const rewritten = text
+      .split(WG_BASE)
+      .join('/api/wg')
+      // 根相对资源目录补代理前缀；已是 /api/wg/... 的不受影响
+      .replace(/"\/(uploads|sourceStore)\//g, '"/api/wg/$1/');
+    return new Response(rewritten, { status: resp.status, headers });
+  }
+  return new Response(resp.body, { status: resp.status, headers });
 }
 
 export const onRequestGet = proxy;

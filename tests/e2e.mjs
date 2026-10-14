@@ -534,7 +534,18 @@ const authHdr = { authorization: token };
       eq('main 不含百度直连', !entry.includes('baidu.com/sugrec'), true);
       // 冻结护栏：上游同源代理化后不得再出现 web.gotab.cn 直连（回归：prepare 替换丢失）
       eq('main 不含 web.gotab.cn 直连', !entry.includes('web.gotab.cn'), true);
+      // 冻结护栏：默认卡片图标不得直连上游 www 官方站（回归：prepare logo 替换丢失）
+      eq('main 不含 www.gotab.cn logo 直连', !entry.includes('www.gotab.cn/icons/logo.svg'), true);
     }
+  }
+  // 代理响应体同源化：上游 API 返回的绝对/根相对资源 URL 必须改写为 /api/wg（回归：浏览器跨域/破图）
+  {
+    const wg = await api.get(`${base}/api/wg/api/recommendApp`);
+    const wgText = (await wg.text().catch(() => '')) || '';
+    if (wg.status() === 200 && wgText) {
+      eq('代理响应无上游绝对直连', !/(https?:)?\/\/(web|www)\.gotab\.cn/.test(wgText), true);
+      eq('代理响应相对资源已加代理前缀', !/"\/(uploads|sourceStore)\//.test(wgText), true);
+    } else log(`(注：/api/wg 上游不可达 status=${wg.status()}，跳过代理改写断言)`);
   }
   // 分享页：getShareData(管理员 username 或 share_id) 返回其云数据
   const sh1 = await api.get(`${base}/api/getShareData?path=${encodeURIComponent(USER)}`);
