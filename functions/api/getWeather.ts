@@ -7,7 +7,7 @@ interface CfLocation {
 }
 
 export const onRequestGet = defineHandler({
-  run: async ({ env, request }) => {
+  run: async ({ request }) => {
     const url = new URL(request.url);
     const city = (url.searchParams.get('city') || '').trim();
 

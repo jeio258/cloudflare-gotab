@@ -21,6 +21,16 @@ export function detectChrome() {
     }
   }
 
+  // playwright 自带 chromium（npm 依赖已装，缓存目录常驻，无需额外下载）
+  const pwCache = join(homedir(), '.cache', 'ms-playwright');
+  if (existsSync(pwCache)) {
+    const dirs = readdirSync(pwCache).filter((d) => d.startsWith('chromium-')).sort().reverse();
+    for (const d of dirs) {
+      const p = join(pwCache, d, 'chrome-linux64', 'chrome');
+      if (existsSync(p)) return p;
+    }
+  }
+
   for (const name of ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']) {
     const r = spawnSync('which', [name], { stdio: 'pipe' });
     const p = String(r.stdout || '').trim();

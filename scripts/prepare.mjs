@@ -102,8 +102,8 @@ html = html.replace(
 writeFileSync(indexPath, html);
 
 // 静态资源长缓存 + 安全响应头
-// 静态资源：哈希文件名，内容不变
-// 安全头：仅加入零功能风险项；CSP 因前端支持用户自定义图标/壁纸源未启用（见 dev-log 待跟进）
+// /assets 与 /images 为内容哈希文件名，可 immutable 长缓存；补丁改动走末尾重哈希换名
+// 安全头：CSP 实用级（放宽项见行内说明），其余为零功能风险项
 writeFileSync(
   join(dist, '_headers'),
   [
@@ -129,74 +129,53 @@ writeFileSync(
   ].join('\n')
 );
 
-// 搜索联想同源化：替换前端直连百度 sugrec 的 URL 为 /api/search-suggest
-const SUG_SRC = 'https://www.baidu.com/sugrec?prod=pc&from=pc_web&wd=';
-const SUG_DST = '/api/search-suggest?wd=';
-const mainFiles = readdirSync(join(dist, 'assets')).filter((f) => f.startsWith('main-') && f.endsWith('.js'));
-let patched = 0;
-for (const f of mainFiles) {
-  const p = join(dist, 'assets', f);
-  const content = readFileSync(p, 'utf8');
-  if (content.includes(SUG_SRC)) {
-    writeFileSync(p, content.split(SUG_SRC).join(SUG_DST));
-    patched++;
-  }
-}
-if (patched === 0) console.warn('[prepare] 未命中百度联想 URL，请检查前端产物');
-
-// 上游同源代理化：前端直连 web.gotab.cn（资源库/壁纸库/推荐）改为 /api/wg 同源代理
-// 全量替换同一字面量：同时覆盖 API 基址、dw() 默认址比较与 mw() 相对图片拼接
-const WG_SRC = 'https://web.gotab.cn';
-const WG_DST = '/api/wg';
-// 默认卡片图标指向上游 www 官方站 —— 同源化到本地同名图标（产物已含 web/icons/logo.svg），消除首屏跨域
-const LOGO_SRC = 'https://www.gotab.cn/icons/logo.svg';
-const LOGO_DST = '/icons/logo.svg';
-let wgPatched = 0;
-let logoPatched = 0;
-for (const f of readdirSync(join(dist, 'assets')).filter((x) => x.endsWith('.js'))) {
-  const p = join(dist, 'assets', f);
-  const orig = readFileSync(p, 'utf8');
-  let c = orig;
-  if (c.includes(LOGO_SRC)) {
-    c = c.split(LOGO_SRC).join(LOGO_DST);
-    logoPatched++;
-  }
-  if (c.includes(WG_SRC)) {
-    c = c.split(WG_SRC).join(WG_DST);
-    wgPatched++;
-  }
-  if (c !== orig) writeFileSync(p, c);
-}
-if (wgPatched === 0) console.warn('[prepare] 未命中 web.gotab.cn URL，请检查前端产物');
-if (logoPatched === 0) console.warn('[prepare] 未命中 www.gotab.cn logo URL，请检查前端产物');
-
 // 品牌替换：作者标识（doxwant/dengxiwang）-> 本仓库地址与 GitHub 图标
 const REPO_URL = 'https://github.com/jeio258/cloudflare-tab';
 const GH_ICON =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" style="vertical-align:middle" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>';
+
+// 产物补丁表：一次遍历完成全部字符串替换（按 scope 限定文件集，order 保证长串先于短串）
 const BRAND_MAP = [
   ['https://github.com/dengxiwang/gotab-personal', REPO_URL],
   ['https://github.com/dengxiwang', REPO_URL],
   ['dengxiwang@aliyun.com', REPO_URL],
   ['>@doxwant</a>', `>${GH_ICON}</a>`],
 ];
-let brandPatched = 0;
-for (const f of readdirSync(join(dist, 'assets')).filter((x) => x.endsWith('.js'))) {
-  const p = join(dist, 'assets', f);
-  let c = readFileSync(p, 'utf8');
-  let changed = false;
-  for (const [from, to] of BRAND_MAP) {
-    if (c.includes(from)) {
+
+const PATCHES = [
+  // 搜索联想：前端直连百度 sugrec → 同源 /api/search-suggest（仅入口 main chunk 含此串）
+  {
+    name: '搜索联想同源化',
+    scope: 'main',
+    map: [['https://www.baidu.com/sugrec?prod=pc&from=pc_web&wd=', '/api/search-suggest?wd=']],
+  },
+  // 上游同源代理化：API 基址、dw() 默认址比较、mw() 相对图片拼接共用同一字面量
+  { name: '上游 API 同源代理', scope: 'all', map: [['https://web.gotab.cn', '/api/wg']] },
+  // 默认卡片图标指向上游 www 官方站 → 本地同名图标（产物已含），消除首屏跨域
+  { name: '默认卡片图标本地化', scope: 'all', map: [['https://www.gotab.cn/icons/logo.svg', '/icons/logo.svg']] },
+  { name: '作者品牌替换', scope: 'all', map: BRAND_MAP },
+];
+
+const assetDir = join(dist, 'assets');
+const hits = new Map(PATCHES.map((p) => [p.name, 0]));
+for (const f of readdirSync(assetDir).filter((x) => x.endsWith('.js'))) {
+  const isMain = f.startsWith('main-');
+  const p = join(assetDir, f);
+  const orig = readFileSync(p, 'utf8');
+  let c = orig;
+  for (const patch of PATCHES) {
+    if (patch.scope === 'main' && !isMain) continue;
+    for (const [from, to] of patch.map) {
+      if (!c.includes(from)) continue;
       c = c.split(from).join(to);
-      changed = true;
+      hits.set(patch.name, hits.get(patch.name) + 1);
     }
   }
-  if (changed) {
-    writeFileSync(p, c);
-    brandPatched++;
-  }
+  if (c !== orig) writeFileSync(p, c);
 }
-if (brandPatched === 0) console.warn('[prepare] 未命中作者品牌字符串，请检查前端产物');
+for (const [name, n] of hits) {
+  if (n === 0) console.warn(`[prepare] 未命中「${name}」，请检查前端产物`);
+}
 
 // 补丁后重哈希级联：内容被改的 JS 文件按 sha1 重命名并全局更新引用（index.html + 各 chunk import），
 // 否则与 /assets/* 的 immutable 长缓存冲突——回访用户会持续拿到旧 bundle（补丁不生效，实测证实）
@@ -206,7 +185,7 @@ for (let iter = 0; iter < 10; iter++) {
   // 1) 对内容与快照不同的文件重命名（含上一轮引用更新产生的变化）
   const rename = new Map();
   for (const f of readdirSync(assetsDir).filter((x) => x.endsWith('.js'))) {
-    if (!origJs.has(f)) continue; // 新生成文件（如合并 CSS 之外不会有）
+    if (!origJs.has(f)) continue; // 新生成文件（合并后的 CSS 不在快照内，且已按内容命名）
     const p = join(assetsDir, f);
     const content = readFileSync(p, 'utf8');
     if (content === origJs.get(f)) continue;

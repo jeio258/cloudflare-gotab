@@ -7,11 +7,9 @@ interface HotItem {
 }
 
 interface UHotItem {
-  index?: number;
   title?: string;
   url?: string;
   hot_value?: string | number;
-  extra?: unknown;
 }
 
 // uapis 支持的热榜类型

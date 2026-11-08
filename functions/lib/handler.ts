@@ -15,7 +15,7 @@ export interface RouteContext {
   body: JsonObject;
 }
 
-export interface HandlerOptions {
+interface HandlerOptions {
   /** 鉴权级别：admin=管理员，user=任意登录用户 */
   auth?: 'user' | 'admin';
   /** true=严格解析（非 JSON/非对象 → 400）；'optional'=尽力解析（失败视为空体） */

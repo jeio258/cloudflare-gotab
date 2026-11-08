@@ -50,7 +50,7 @@ export const insertUser = (env: Env, u: Omit<UserRow, 'created_at'>) =>
       u.status,
       u.share_id,
       u.share_enabled,
-      // 显式绑定 ISO created_at：schema 默认 datetime('now') 为空格分隔格式，与 setDefaultData 的 ISO 口径不一致
+      // 显式绑定 ISO：schema 默认 datetime('now') 为空格分隔格式，与 default_data 的 ISO 口径统一
       new Date().toISOString()
     )
     .run();
@@ -75,7 +75,7 @@ export const updateProfile = (
     .bind(p.username ?? null, p.nickname ?? null, p.sex ?? null, p.phone ?? null, p.birthday ?? null, id)
     .run();
 
-export interface UserDataRow {
+interface UserDataRow {
   user_id: string;
   data: string;
   timestamp: number;

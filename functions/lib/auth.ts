@@ -65,7 +65,7 @@ export async function createToken(env: Env, uid: string): Promise<string> {
   return `${h}.${p}.${b64url(new Uint8Array(sig))}`;
 }
 
-export async function verifyToken(env: Env, token: string): Promise<string | null> {
+async function verifyToken(env: Env, token: string): Promise<string | null> {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   const [h, p, sig] = parts;

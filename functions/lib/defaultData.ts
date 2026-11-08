@@ -1,6 +1,6 @@
 import type { Env } from './http';
 
-export interface SnapshotRow {
+interface SnapshotRow {
   id: string;
   data: string;
   enabled: number;
@@ -8,7 +8,7 @@ export interface SnapshotRow {
   created_at: string;
 }
 
-export const upsertCurrent = (env: Env, data: string, created_at: string) =>
+const upsertCurrent = (env: Env, data: string, created_at: string) =>
   env.DB.prepare(
     `insert into default_data (id, data, created_at) values (1, ?, ?)
      on conflict(id) do update set data = excluded.data, created_at = excluded.created_at`

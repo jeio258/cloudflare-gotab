@@ -1,3 +1,4 @@
+import { assertNotSelf } from '../../lib/console';
 import { defineHandler } from '../../lib/handler';
 import { ApiError } from '../../lib/http';
 
@@ -8,7 +9,7 @@ export const onRequestPost = defineHandler({
   run: async ({ env, admin, body }) => {
     const userId = String(body.userId || body.id || '');
     if (!userId) throw new ApiError(400, '参数错误');
-    if (userId === admin!.id) throw new ApiError(400, '不能删除自己的账号');
+    assertNotSelf(admin, userId, '不能删除自己的账号');
     // 原子级联清理该用户的云数据与账号
     const db = env.DB;
     await db.batch([
