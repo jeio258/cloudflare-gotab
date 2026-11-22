@@ -540,6 +540,12 @@ const authHdr = { authorization: token };
     data: { username: cu, password: 'pass123', nickname: '后台创建', sex: 0 },
   });
   eq('addUser code', (await okJson(cu1)).body?.code, 200);
+  // 重复用户名：注册与后台建号走同一实现，均须归为业务 400（而非 500）
+  const cuDup = await api.post(`${base}/api/console/addUser`, {
+    headers: { authorization: token },
+    data: { username: cu, password: 'pass123' },
+  });
+  eq('addUser 重复用户名 400', (await okJson(cuDup)).body?.code, 400);
   const cuList = await api.get(`${base}/api/console/getAwaitingApprovalUserAppellationList?username=${cu}`, {
     headers: { authorization: token },
   });

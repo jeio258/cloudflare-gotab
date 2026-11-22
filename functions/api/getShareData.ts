@@ -2,6 +2,7 @@ import { getUserData } from '../lib/db';
 import type { UserRow } from '../lib/db';
 import { defineHandler } from '../lib/handler';
 import type { Env } from '../lib/http';
+import { safeParse } from '../lib/json';
 
 // 分享页契约：data=对象{shareData} 正常；data=数字2 已停止分享；data=数字3 无权限；data=null 视为无效
 async function resolve(env: Env, path: string) {
@@ -17,11 +18,8 @@ async function resolve(env: Env, path: string) {
   if (Number(user.share_enabled) !== 1) return 2;
   const row = await getUserData(env, user.id);
   if (!row) return null;
-  try {
-    return { shareData: JSON.parse(row.data) };
-  } catch {
-    return null;
-  }
+  const data = safeParse(row.data);
+  return data === null ? null : { shareData: data };
 }
 
 const get = defineHandler({

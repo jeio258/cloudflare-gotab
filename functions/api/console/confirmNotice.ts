@@ -1,5 +1,6 @@
 import { defineHandler } from '../../lib/handler';
 import { ApiError } from '../../lib/http';
+import { disableAll, enableOne } from '../../lib/snapshot';
 
 // 二次确认发布：仅保留最新一条启用的公告
 export const onRequestPost = defineHandler({
@@ -11,11 +12,7 @@ export const onRequestPost = defineHandler({
     if (!id) throw new ApiError(400, '参数错误');
     const row = await env.DB.prepare('select id from notices where id = ?').bind(id).first<{ id: string }>();
     if (!row) throw new ApiError(400, '公告不存在');
-    const db = env.DB;
-    await db.batch([
-      db.prepare('update notices set status = 0'),
-      db.prepare('update notices set status = 1 where id = ?').bind(id),
-    ]);
+    await env.DB.batch([disableAll(env.DB, 'notices', 'status'), enableOne(env.DB, 'notices', 'status', id)]);
     return null;
   },
 });
