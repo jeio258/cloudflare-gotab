@@ -2,7 +2,13 @@
   'use strict';
 
   // 抽屉菜单：无后端能力的菜单项
-  const MENU_HIDE = ['个性分享', '版本说明', '捐赠打赏', '关于我们'];
+  const MENU_HIDE = ['个性分享', '版本说明', '捐赠打赏', '关于我们', '每日宝藏'];
+  // 控制台：后端未实现、已明确关闭的功能（进入只会得到空表格），隐藏入口避免点进空白页
+  const CONSOLE_HIDE = [
+    '应用推荐', '网站收录', '分享页', '推荐管理', '收录分类', '收录管理',
+    '壁纸库', '分享管理', '附件管理', '基础信息', '功能配置', '自定义页面',
+    '底部链接', '邮件服务',
+  ];
   // 个人面板：无邮件服务/无审核流的按钮
   const BUTTON_HIDE = ['绑定邮箱', '申请称号', '称号管理', '变更称号', '重新申请'];
 
@@ -213,7 +219,9 @@
     // 抽屉/菜单项
     for (const el of items) {
       const t = txt(el);
-      if (t && MENU_HIDE.some((h) => t.includes(h))) hide(el);
+      if (!t) continue;
+      if (MENU_HIDE.includes(t) || MENU_HIDE.some((h) => t.startsWith(h))) hide(el);
+      else if (CONSOLE_HIDE.some((h) => t.startsWith(h))) hide(el);
     }
 
     // 按钮级隐藏（按文案精确匹配，避免误伤）
